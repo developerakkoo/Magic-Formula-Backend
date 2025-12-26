@@ -1,0 +1,27 @@
+{
+  "name": "magic-formula-api",
+  "version": "1.0.0",
+  "description": "Magic Formula Backend API",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.6.1",
+    "exceljs": "^4.4.0",
+    "express": "^4.22.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.20.2",
+    "multer": "^2.0.2",
+    "razorpay": "^2.9.6",
+    "redis": "^5.10.0",
+    "uuid": "^8.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
