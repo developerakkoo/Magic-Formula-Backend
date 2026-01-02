@@ -1,4 +1,4 @@
-PORT=4000
+PORT=5000
 MONGO_URI=mongodb+srv://ShubhamShelke:Shubhamshelke@cluster0.23riiuz.mongodb.net/magic_formula?appName=Cluster0
 
 JWT_ACCESS_SECRET=access_secret

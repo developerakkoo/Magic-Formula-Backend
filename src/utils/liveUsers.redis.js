@@ -1,24 +1,27 @@
-const { redisClient } = require('../config/redis');
+// Redis functionality commented out
+// const { redisClient } = require('../config/redis');
 
-const LIVE_USERS_KEY = 'live_users';
+// const LIVE_USERS_KEY = 'live_users';
 
+// Redis functions disabled - return default values
 exports.addLiveUser = async (userId) => {
-  const client = redisClient();
-  if (!client) return;
-
-  await client.sAdd(LIVE_USERS_KEY, userId.toString());
+  // Redis disabled - no-op
+  // const client = redisClient();
+  // if (!client) return;
+  // await client.sAdd(LIVE_USERS_KEY, userId.toString());
 };
 
 exports.removeLiveUser = async (userId) => {
-  const client = redisClient();
-  if (!client) return;
-
-  await client.sRem(LIVE_USERS_KEY, userId.toString());
+  // Redis disabled - no-op
+  // const client = redisClient();
+  // if (!client) return;
+  // await client.sRem(LIVE_USERS_KEY, userId.toString());
 };
 
 exports.getLiveUsersCount = async () => {
-  const client = redisClient();
-  if (!client) return 0;
-
-  return await client.sCard(LIVE_USERS_KEY);
+  // Redis disabled - return 0
+  // const client = redisClient();
+  // if (!client) return 0;
+  // return await client.sCard(LIVE_USERS_KEY);
+  return 0;
 };

@@ -8,8 +8,12 @@ const adminAuth = require('../admin/adminAuth.middleware.js');
 router.post('/login', adminController.login);
 
 // PROTECTED (ADMIN LOGIN REQUIRED)
-router.post('/create', adminAuth, adminController.createAdmin);
+router.post('/create', adminController.createAdmin);
 router.get('/users', adminAuth, adminController.getAllUsers);
+router.get('/users/:id', adminAuth, adminController.getUserById);
+router.post('/users', adminAuth, adminController.createUser);
+router.patch('/users/:id', adminAuth, adminController.updateUser);
+router.delete('/users/:id', adminAuth, adminController.deleteUser);
 router.patch('/block/:id', adminAuth, adminController.blockUser);
 router.patch('/unblock/:id', adminAuth, adminController.unblockUser);
 

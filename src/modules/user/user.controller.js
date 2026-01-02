@@ -1,7 +1,8 @@
 const User = require('./user.model');
 const path = require('path');
 const fs = require('fs');
-const { getLiveUsersCount } = require('../../utils/liveUsers.redis');
+// Redis disabled
+// const { getLiveUsersCount } = require('../../utils/liveUsers.redis');
 
 exports.getProfilePhoto = async (req, res) => {
   const user = await User.findById(req.params.id);
@@ -57,7 +58,9 @@ exports.getUserAnalytics = async (req, res) => {
   const totalUsers = await User.countDocuments();
   const subscribedUsers = await User.countDocuments({ isSubscribed: true });
   const unsubscribedUsers = totalUsers - subscribedUsers;
-  const liveUsers = await getLiveUsersCount();
+  // Redis disabled - return 0 for liveUsers
+  // const liveUsers = await getLiveUsersCount();
+  const liveUsers = 0;
 
   res.json({
     success: true,

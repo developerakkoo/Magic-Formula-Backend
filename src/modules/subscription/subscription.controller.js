@@ -1,7 +1,7 @@
 const Plan = require('./plan.model');
 const UserSubscription = require('./subscription.model');
 const User = require('../user/user.model');
-const razorpay = require('../../config/razorpay');
+const getRazorpayInstance = require('../../config/razorpay');
 // const Plan = require('./plan.model');
 const crypto = require('crypto');
 // const UserSubscription = require('./subscription.model');
@@ -239,6 +239,9 @@ exports.subscribe = async (req, res) => {
     // Amount in paise
     const amount = plan.discountedPrice * 100;
 
+    // Get Razorpay instance (lazy-loaded)
+    const razorpay = getRazorpayInstance();
+
     // Create Razorpay order
     const order = await razorpay.orders.create({
       amount,
@@ -262,7 +265,15 @@ exports.subscribe = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error('Subscribe error:', error);
+    
+    // Handle Razorpay configuration errors
+    if (error.message && error.message.includes('Razorpay configuration missing')) {
+      return res.status(500).json({ 
+        message: 'Payment service is not configured. Please contact support.' 
+      });
+    }
+    
     res.status(500).json({ message: 'Payment initiation failed' });
   }
 };

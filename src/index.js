@@ -1,18 +1,19 @@
-require('dotenv').config();
+// Load environment variables from src/env file
+require('dotenv').config({ path: './src/env' });
 
 const app = require('./app');
 const connectDB = require('./config/db');
-const { connectRedis } = require('./config/redis');
+// const { connectRedis } = require('./config/redis');
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5000;
 
 (async () => {
   try {
     // 1. Connect DB
     await connectDB();
 
-    // 2. Connect Redis (optional)
-    await connectRedis();
+    // 2. Connect Redis (optional) - COMMENTED OUT
+    // await connectRedis();
 
     // 3. Start server
     app.listen(PORT, () => {

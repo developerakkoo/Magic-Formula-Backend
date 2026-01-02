@@ -1,6 +1,7 @@
 const User = require('../user/user.model');
 const { generateAccessToken } = require('../../utils/jwt.utils');
-const { addLiveUser, removeLiveUser } = require('../../utils/liveUsers.redis');
+// Redis disabled
+// const { addLiveUser, removeLiveUser } = require('../../utils/liveUsers.redis');
 
 /**
  * LOGIN / REGISTER WITH MOBILE
@@ -66,8 +67,8 @@ exports.login = async (req, res) => {
       userId: user._id
     });
 
-    // 🔴 Add user to Redis live users
-    await addLiveUser(user._id);
+    // 🔴 Add user to Redis live users - DISABLED
+    // await addLiveUser(user._id);
 
     // 🌐 Build profile pic URL
     const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -108,7 +109,8 @@ exports.login = async (req, res) => {
  */
 exports.logout = async (req, res) => {
   try {
-    await removeLiveUser(req.user._id);
+    // Redis disabled
+    // await removeLiveUser(req.user._id);
 
     res.json({
       success: true,

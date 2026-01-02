@@ -57,15 +57,30 @@ exports.getNotifications = async (req, res) => {
     const notifications = await Notification.find(query)
       .sort({ [sortBy]: order === 'asc' ? 1 : -1 })
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
 
     const total = await Notification.countDocuments(query);
+
+    // Add sentCount to each notification by counting UserNotification records
+    const notificationsWithSentCount = await Promise.all(
+      notifications.map(async (notification) => {
+        const sentCount = await UserNotification.countDocuments({
+          notification: notification._id,
+          status: { $in: ['SENT', 'PENDING'] } // Count both sent and pending as "sent"
+        });
+        return {
+          ...notification,
+          sentCount
+        };
+      })
+    );
 
     res.json({
       success: true,
       total,
       page: Number(page),
-      data: notifications,
+      data: notificationsWithSentCount,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
