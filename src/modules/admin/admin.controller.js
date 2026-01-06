@@ -2,6 +2,11 @@ const User = require('../user/user.model');
 const Admin = require('./admin.model');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const xlsx = require('xlsx');
+const Plan = require('../subscription/plan.model');
+const Subscription = require('../subscription/subscription.model');
+const crypto = require('crypto');
+
 // Redis disabled
 // const { getLiveUsersCount } = require('../../utils/liveUsers.redis');
 const UserSubscription = require('../subscription/subscription.model');
@@ -32,9 +37,9 @@ exports.unblockUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    res.json({ 
+    res.json({
       success: true,
-      message: 'User unblocked successfully' 
+      message: 'User unblocked successfully'
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -49,7 +54,7 @@ exports.getUserById = async (req, res) => {
     const user = await User.findById(req.params.id)
       .populate('activePlan')
       .select('-__v');
-    
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -57,9 +62,9 @@ exports.getUserById = async (req, res) => {
     // Get subscription expiry if activePlan exists
     let planExpiry = null;
     if (user.activePlan) {
-      const subscription = await UserSubscription.findOne({ 
-        userId: user._id, 
-        isActive: true 
+      const subscription = await UserSubscription.findOne({
+        userId: user._id,
+        isActive: true
       });
       if (subscription) {
         planExpiry = subscription.expiryDate;
@@ -157,7 +162,7 @@ exports.updateUser = async (req, res) => {
 exports.deleteUser = async (req, res) => {
   try {
     const user = await User.findByIdAndDelete(req.params.id);
-    
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -195,7 +200,7 @@ exports.getAllUsers = async (req, res) => {
             userId: user._id,
             isActive: true
           }).lean();
-          
+
           if (subscription) {
             user.planExpiry = subscription.expiryDate;
           }
@@ -500,7 +505,6 @@ exports.getBestsellerPlans = async (req, res) => {
 
 
 
-
 exports.exportUsersExcel = async (req, res) => {
   try {
     const users = await User.find().lean();
@@ -508,17 +512,19 @@ exports.exportUsersExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Users');
 
-    // Columns
     worksheet.columns = [
       { header: 'Mobile', key: 'mobile', width: 15 },
       { header: 'Full Name', key: 'fullName', width: 25 },
       { header: 'Email', key: 'email', width: 30 },
       { header: 'WhatsApp', key: 'whatsapp', width: 15 },
       { header: 'Blocked', key: 'isBlocked', width: 10 },
-      { header: 'Created At', key: 'createdAt', width: 20 }
+      { header: 'Created At', key: 'createdAt', width: 20 },
+
+      // 🔥 Bulk subscription columns
+      { header: 'Plan Code', key: 'planCode', width: 15 },
+      { header: 'Duration', key: 'duration', width: 12 }
     ];
 
-    // Rows
     users.forEach(user => {
       worksheet.addRow({
         mobile: user.mobile,
@@ -526,9 +532,16 @@ exports.exportUsersExcel = async (req, res) => {
         email: user.email,
         whatsapp: user.whatsapp,
         isBlocked: user.isBlocked ? 'Yes' : 'No',
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+
+        // Empty by default (Admin will fill)
+        planCode: '',
+        duration: ''
       });
     });
+
+    // Optional: Freeze header row
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
 
     res.setHeader(
       'Content-Type',
@@ -536,7 +549,7 @@ exports.exportUsersExcel = async (req, res) => {
     );
     res.setHeader(
       'Content-Disposition',
-      'attachment; filename=users.xlsx'
+      'attachment; filename=users_bulk_subscription.xlsx'
     );
 
     await workbook.xlsx.write(res);
@@ -616,3 +629,271 @@ exports.exportEarningsExcel = async (req, res) => {
   }
 };
 
+
+
+
+
+
+
+exports.bulkAssignSubscription = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Excel file required' });
+    }
+
+    const workbook = xlsx.read(req.file.buffer);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(sheet);
+
+    if (!rows.length) {
+      return res.status(400).json({ message: 'Excel file is empty' });
+    }
+
+    const success = [];
+    const failed = [];
+
+    let rowNumber = 1;
+
+    for (const row of rows) {
+      try {
+        /* ===== NORMALIZE USER IDENTIFIER ===== */
+        const email = row.Email
+          ? String(row.Email).trim().toLowerCase()
+          : null;
+
+        const mobile = row.Mobile
+          ? String(row.Mobile).replace(/\D/g, '')
+          : null;
+
+        if (!email && !mobile) {
+          failed.push({
+            rowNumber,
+            email,
+            mobile,
+            reason: 'Email or Mobile required'
+          });
+          rowNumber++;
+          continue;
+        }
+
+        /* ===== FIND USER ===== */
+        const user = await User.findOne({
+          $or: [
+            email ? { email } : null,
+            mobile ? { mobile } : null
+          ].filter(Boolean)
+        });
+
+        if (!user) {
+          failed.push({
+            rowNumber,
+            email,
+            mobile,
+            reason: 'User not found'
+          });
+          rowNumber++;
+          continue;
+        }
+
+        /* ===== PLAN CODE ===== */
+        const planCode = row['Plan Code']
+          ? String(row['Plan Code']).trim().toUpperCase()
+          : null;
+
+        if (!planCode) {
+          failed.push({
+            rowNumber,
+            email,
+            mobile,
+            reason: 'Plan Code missing'
+          });
+          rowNumber++;
+          continue;
+        }
+
+        /* ===== FIND PLAN ===== */
+        const plan = await Plan.findOne({
+          code: planCode,
+          isActive: true
+        });
+
+        if (!plan) {
+          failed.push({
+            rowNumber,
+            email,
+            mobile,
+            planCode,
+            reason: 'Plan not found or inactive'
+          });
+          rowNumber++;
+          continue;
+        }
+
+        /* ===== DEACTIVATE OLD SUBSCRIPTIONS ===== */
+        await UserSubscription.updateMany(
+          { userId: user._id, isActive: true },
+          { isActive: false }
+        );
+
+        /* ===== CALCULATE DATES ===== */
+        const startDate = new Date();
+        const expiryDate = new Date(startDate);
+        expiryDate.setMonth(expiryDate.getMonth() + plan.durationInMonths);
+
+        /* ===== CREATE SUBSCRIPTION ===== */
+        const subscription = await UserSubscription.create({
+          userId: user._id,
+          planId: plan._id,
+          startDate,
+          expiryDate,
+          isActive: true
+        });
+
+        /* ===== UPDATE USER ===== */
+        await User.findByIdAndUpdate(user._id, {
+          activePlan: subscription._id
+        });
+
+        success.push({
+          rowNumber,
+          userId: user._id,
+          email,
+          mobile,
+          planCode,
+          planName: plan.title,
+          startDate,
+          expiryDate
+        });
+
+      } catch (err) {
+        failed.push({
+          rowNumber,
+          reason: err.message
+        });
+      }
+
+      rowNumber++;
+    }
+
+    return res.json({
+      message: 'Bulk subscription processed',
+      summary: {
+        totalRows: rows.length,
+        successCount: success.length,
+        failedCount: failed.length
+      },
+      success,
+      failed
+    });
+
+  } catch (error) {
+    console.error('Bulk subscription error:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+
+const generateTempPassword = () => {
+  return crypto.randomBytes(4).toString('hex');
+};
+
+
+exports.bulkCreateUsers = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Excel file required' });
+    }
+
+    const workbook = xlsx.read(req.file.buffer);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(sheet);
+
+    if (!rows.length) {
+      return res.status(400).json({ message: 'Excel file is empty' });
+    }
+
+    const created = [];
+    const skipped = [];
+    const failed = [];
+
+    let rowNumber = 1;
+
+    for (const row of rows) {
+      try {
+        const fullName = row['Full Name']?.toString().trim();
+        const email = row.Email?.toString().trim().toLowerCase();
+        const mobile = row.Mobile?.toString().replace(/\D/g, '');
+        const whatsapp = row.WhatsApp?.toString().replace(/\D/g, '');
+
+        if (!fullName || !email || !mobile) {
+          failed.push({
+            rowNumber,
+            reason: 'Full Name, Email and Mobile are required'
+          });
+          rowNumber++;
+          continue;
+        }
+
+        const existingUser = await User.findOne({
+          $or: [{ email }, { mobile }]
+        });
+
+        if (existingUser) {
+          skipped.push({
+            rowNumber,
+            email,
+            mobile,
+            reason: 'User already exists'
+          });
+          rowNumber++;
+          continue;
+        }
+
+        const tempPassword = generateTempPassword();
+        const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+        const user = await User.create({
+          fullName,
+          email,
+          mobile,
+          whatsapp,
+          password: hashedPassword,
+          isVerified: true
+        });
+
+        created.push({
+          rowNumber,
+          userId: user._id,
+          email,
+          mobile,
+          tempPassword // ⚠️ only for admin response (remove later)
+        });
+
+      } catch (err) {
+        failed.push({
+          rowNumber,
+          reason: err.message
+        });
+      }
+
+      rowNumber++;
+    }
+
+    return res.json({
+      message: 'Bulk profile creation completed',
+      summary: {
+        totalRows: rows.length,
+        created: created.length,
+        skipped: skipped.length,
+        failed: failed.length
+      },
+      created,
+      skipped,
+      failed
+    });
+
+  } catch (error) {
+    console.error('Bulk user creation error:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};

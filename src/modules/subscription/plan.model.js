@@ -2,10 +2,22 @@ const mongoose = require('mongoose');
 
 const planSchema = new mongoose.Schema(
   {
+    /* ===== BASIC INFO ===== */
+
     title: {
       type: String,
       required: true,
       trim: true
+    },
+
+    // 🔑 IMPORTANT: Used for bulk upload (Excel → Plan mapping)
+    code: {
+      type: String,
+      required: true,
+      unique: true,
+      uppercase: true,
+      trim: true,
+      index: true
     },
 
     description: {
@@ -17,6 +29,8 @@ const planSchema = new mongoose.Schema(
         message: 'Maximum 6 description points allowed'
       }
     },
+
+    /* ===== PRICING ===== */
 
     durationInMonths: {
       type: Number,

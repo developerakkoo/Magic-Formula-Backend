@@ -17,6 +17,7 @@ exports.createPlan = async (req, res) => {
   try {
     const {
       title,
+      code,                // ✅ ADD THIS
       description,
       durationInMonths,
       actualPrice,
@@ -24,11 +25,15 @@ exports.createPlan = async (req, res) => {
       showOfferBadge,
       offerText,
       offerStartAt,
-      offerEndAt
+      offerEndAt,
+      isActive
     } = req.body;
 
-    if (!title || !durationInMonths || !actualPrice || !discountedPrice) {
-      return res.status(400).json({ message: 'Required fields missing' });
+    /* ===== BASIC VALIDATIONS ===== */
+    if (!title || !code || !durationInMonths || !actualPrice || !discountedPrice) {
+      return res.status(400).json({
+        message: 'title, code, durationInMonths, actualPrice, discountedPrice are required'
+      });
     }
 
     if (description && description.length > 6) {
@@ -39,8 +44,18 @@ exports.createPlan = async (req, res) => {
       return res.status(400).json({ message: 'Offer text max 30 characters' });
     }
 
+    /* ===== DUPLICATE CODE CHECK ===== */
+    const existingPlan = await Plan.findOne({ code: code.toUpperCase() });
+    if (existingPlan) {
+      return res.status(409).json({
+        message: `Plan with code '${code}' already exists`
+      });
+    }
+
+    /* ===== CREATE PLAN ===== */
     const plan = await Plan.create({
       title,
+      code: code.toUpperCase(),   // ✅ IMPORTANT
       description,
       durationInMonths,
       actualPrice,
@@ -49,19 +64,25 @@ exports.createPlan = async (req, res) => {
       offerText,
       offerStartAt,
       offerEndAt,
-      isActive: true
+      isActive: isActive ?? true
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: 'Subscription plan created',
+      message: 'Subscription plan created successfully',
       data: plan
     });
 
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('Create plan error:', error);
+
+    return res.status(400).json({
+      message: error.message,
+      error: error.name
+    });
   }
 };
+
 
 /**
  * GET ALL PLANS (ADMIN)
