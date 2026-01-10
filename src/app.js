@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
+require('./cron/subscriptionReminder'); // (cron is loaded)
+require('./cron/subscriptionExpiry');
+
 app.use(express.json());
 app.use(cors());
 

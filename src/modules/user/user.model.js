@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require('mongoose')
 
 const userSchema = new mongoose.Schema(
   {
@@ -9,15 +9,19 @@ const userSchema = new mongoose.Schema(
     whatsapp: String,
 
     // store only filename, not full URL
-    profilePic: { type: String }, 
+    profilePic: { type: String },
 
-    firebaseToken: String,
+    firebaseTokens: {
+      type: [String],
+      default: []
+    },
+
     isBlocked: { type: Boolean, default: false },
 
     activePlan: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan' },
     planExpiry: Date
   },
   { timestamps: true }
-);
+)
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema)

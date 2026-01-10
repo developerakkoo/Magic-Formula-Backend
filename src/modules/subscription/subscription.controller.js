@@ -2,11 +2,11 @@ const Plan = require('./plan.model');
 const UserSubscription = require('./subscription.model');
 const User = require('../user/user.model');
 const getRazorpayInstance = require('../../config/razorpay');
-// const Plan = require('./plan.model');
 const crypto = require('crypto');
-// const UserSubscription = require('./subscription.model');
-// const Plan = require('./plan.model');
-// const User = require('../user/user.model');
+const Notification = require('../notification/notification.model');
+const UserNotification = require('../notification/userNotification.model');
+const { sendFirebasePush } = require('../../utils/firebasePush.utils');
+
 
 /* ================= ADMIN ================= */
 
@@ -140,16 +140,18 @@ exports.assignPlanToUser = async (req, res) => {
       return res.status(400).json({ message: 'Invalid user or plan' });
     }
 
-    // Deactivate previous subscriptions
+    /* 1️⃣ Deactivate previous subscriptions */
     await UserSubscription.updateMany(
       { userId, isActive: true },
       { isActive: false }
     );
 
+    /* 2️⃣ Calculate dates */
     const startDate = new Date();
     const expiryDate = new Date();
     expiryDate.setMonth(expiryDate.getMonth() + plan.durationInMonths);
 
+    /* 3️⃣ Create new subscription */
     const subscription = await UserSubscription.create({
       userId,
       planId,
@@ -158,10 +160,44 @@ exports.assignPlanToUser = async (req, res) => {
       isActive: true
     });
 
+    /* 4️⃣ Attach subscription to user */
     user.activePlan = subscription._id;
     await user.save();
 
-    res.json({
+    /* ================= 🔔 NOTIFICATION PART ================= */
+
+    // 5️⃣ Create notification master record
+    const notification = await Notification.create({
+      type: 'SUBSCRIPTION',
+      title: '🎉 Subscription Activated',
+      message: `Your ${plan.title} plan is active till ${expiryDate.toDateString()}`
+    });
+
+    // 6️⃣ Create user-notification mapping
+    await UserNotification.create({
+      user: user._id,
+      notification: notification._id,
+      status: 'PENDING'
+    });
+
+    // 7️⃣ Send Firebase push
+    const tokens = user.firebaseTokens || [];
+
+    for (const token of tokens) {
+      try {
+        await sendFirebasePush({
+          token,
+          title: notification.title,
+          message: notification.message
+        });
+      } catch (err) {
+        console.error('FCM send error:', err.message);
+      }
+    }
+
+    /* ======================================================== */
+
+    return res.json({
       success: true,
       message: 'Subscription assigned successfully',
       data: {
@@ -169,10 +205,12 @@ exports.assignPlanToUser = async (req, res) => {
       }
     });
 
-  } catch {
+  } catch (error) {
+    console.error('Assign plan error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
+
 
 /**
  * SUBSCRIPTION ANALYTICS
@@ -316,7 +354,7 @@ exports.verifyPayment = async (req, res) => {
 
     const userId = req.user.id;
 
-    // Step 1: Verify signature
+    /* 1️⃣ Verify Razorpay signature */
     const generatedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
@@ -326,24 +364,24 @@ exports.verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Payment verification failed' });
     }
 
-    // Step 2: Validate plan
+    /* 2️⃣ Validate plan */
     const plan = await Plan.findById(planId);
     if (!plan || !plan.isActive) {
       return res.status(400).json({ message: 'Invalid plan' });
     }
 
-    // Step 3: Deactivate previous subscriptions
+    /* 3️⃣ Deactivate previous subscriptions */
     await UserSubscription.updateMany(
       { userId, isActive: true },
       { isActive: false }
     );
 
-    // Step 4: Calculate subscription dates
+    /* 4️⃣ Calculate dates */
     const startDate = new Date();
     const expiryDate = new Date();
     expiryDate.setMonth(expiryDate.getMonth() + plan.durationInMonths);
 
-    // Step 5: Create subscription
+    /* 5️⃣ Create subscription */
     const subscription = await UserSubscription.create({
       userId,
       planId,
@@ -354,10 +392,45 @@ exports.verifyPayment = async (req, res) => {
       paymentProvider: 'razorpay'
     });
 
-    // Step 6: Attach subscription to user
-    await User.findByIdAndUpdate(userId, {
-      activePlan: subscription._id
+    /* 6️⃣ Attach subscription to user */
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { activePlan: subscription._id },
+      { new: true }
+    );
+
+    /* ================= 🔔 NOTIFICATION ================= */
+
+    // Create notification
+    const notification = await Notification.create({
+      type: 'SUBSCRIPTION',
+      title: '🎉 Subscription Activated',
+      message: `Your ${plan.title} plan is active till ${expiryDate.toDateString()}`
     });
+
+    // Map notification to user
+    await UserNotification.create({
+      user: user._id,
+      notification: notification._id,
+      status: 'PENDING'
+    });
+
+    // Send Firebase push
+    const tokens = user.firebaseTokens || [];
+
+    for (const token of tokens) {
+      try {
+        await sendFirebasePush({
+          token,
+          title: notification.title,
+          message: notification.message
+        });
+      } catch (err) {
+        console.error('FCM error:', err.message);
+      }
+    }
+
+    /* =================================================== */
 
     return res.json({
       success: true,
@@ -369,7 +442,7 @@ exports.verifyPayment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error('Verify payment error:', error);
     res.status(500).json({ message: 'Subscription activation failed' });
   }
 };

@@ -15,7 +15,7 @@ const notificationSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ['INFO', 'PROMOTION', 'ALERT'],
+      enum: ['INFO', 'PROMOTION', 'ALERT', 'SUBSCRIPTION', 'SUBSCRIPTION_EXPIRING', 'SUBSCRIPTION_EXPIRED'],
       default: 'INFO',
     },
 

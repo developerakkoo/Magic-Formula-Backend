@@ -13,7 +13,10 @@ router.put('/:id', controller.updateNotification);
 router.delete('/:id', controller.deleteNotification);
 
 router.post('/send-to-users', userController.sendNotificationToUsers);
-router.post('/send-whatsapp', authAdmin,  controller.sendWhatsAppNotifications
+router.post('/send-whatsapp', controller.sendWhatsAppNotifications
 );
+
+router.post('/send-firebase', controller.sendFirebaseNotifications);
+
 
 module.exports = router;

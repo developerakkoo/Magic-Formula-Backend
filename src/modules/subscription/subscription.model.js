@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require('mongoose')
 
 const subscriptionSchema = new mongoose.Schema(
   {
@@ -29,7 +29,16 @@ const subscriptionSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
+    /* 🔔 NOTIFICATION FLAGS */
+    expiryReminderSent: {
+      type: Boolean,
+      default: false
+    },
 
+    expiredNotificationSent: {
+      type: Boolean,
+      default: false
+    },
     /* ===== PAYMENT (FUTURE) ===== */
 
     paymentId: {
@@ -51,22 +60,21 @@ const subscriptionSchema = new mongoose.Schema(
     usageResetAt: {
       type: Date,
       default: () => {
-        const now = new Date();
-        now.setHours(24, 0, 0, 0); // reset at midnight
-        return now;
+        const now = new Date()
+        now.setHours(24, 0, 0, 0) // reset at midnight
+        return now
       }
     }
-
   },
   {
     timestamps: true
   }
-);
+)
 
 /* Ensure only ONE active subscription per user */
 subscriptionSchema.index(
   { userId: 1, isActive: 1 },
   { unique: true, partialFilterExpression: { isActive: true } }
-);
+)
 
-module.exports = mongoose.model('UserSubscription', subscriptionSchema);
+module.exports = mongoose.model('UserSubscription', subscriptionSchema)
