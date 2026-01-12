@@ -16,6 +16,7 @@ router.patch('/users/:id', adminAuth, adminController.updateUser);
 router.delete('/users/:id', adminAuth, adminController.deleteUser);
 router.patch('/block/:id', adminAuth, adminController.blockUser);
 router.patch('/unblock/:id', adminAuth, adminController.unblockUser);
+router.patch('/reset-device/:id', adminAuth, adminController.resetUserDevice);
 
 // router.get('/dashboard', adminAuth, adminController.getDashboardStats);
 router.get('/users-analytics', adminAuth, adminController.getUserAnalytics);
@@ -27,8 +28,5 @@ router.get('/export-earnings', adminAuth, adminController.exportEarningsExcel);
 
 router.post('/bulk-create-users', adminAuth, excelUpload.single('file'),  adminController.bulkCreateUsers);
 router.post('/bulk-subscription', adminAuth, excelUpload.single('file'), adminController.bulkAssignSubscription);
-
-module.exports = router;
-
 
 module.exports = router;

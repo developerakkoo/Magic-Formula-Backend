@@ -47,6 +47,32 @@ exports.unblockUser = async (req, res) => {
 };
 
 /**
+ * RESET USER DEVICE (ADMIN)
+ * Clears deviceId to allow user to login from a new device
+ */
+exports.resetUserDevice = async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { deviceId: null, lastDeviceLogin: null },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.json({
+      success: true,
+      message: 'User device reset successfully. User can now login from a new device.'
+    });
+  } catch (error) {
+    console.error('Reset user device error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
  * GET USER BY ID (ADMIN)
  */
 exports.getUserById = async (req, res) => {
@@ -183,16 +209,45 @@ exports.deleteUser = async (req, res) => {
 
 
 /**
- * GET ALL USERS (ADMIN)
+ * GET ALL USERS (ADMIN) - Enhanced with filters and pagination
  */
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find()
-      .sort({ createdAt: -1 })
+    const {
+      page = 1,
+      limit = 50,
+      search,
+      isBlocked,
+      hasActivePlan,
+      planExpiryStart,
+      planExpiryEnd,
+      sortBy = 'createdAt',
+      order = 'desc'
+    } = req.query;
+
+    // Build query
+    const query = {};
+
+    // Filter by blocked status
+    if (isBlocked !== undefined) {
+      query.isBlocked = isBlocked === 'true' || isBlocked === true;
+    }
+
+    // Search by name, email, or mobile
+    if (search) {
+      query.$or = [
+        { fullName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { mobile: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Get all users matching filters (before pagination)
+    let users = await User.find(query)
       .select('-__v')
       .lean();
 
-    // Populate planExpiry from active subscriptions
+    // Populate planExpiry and filter by subscription status
     const usersWithExpiry = await Promise.all(
       users.map(async (user) => {
         if (user.activePlan) {
@@ -203,19 +258,69 @@ exports.getAllUsers = async (req, res) => {
 
           if (subscription) {
             user.planExpiry = subscription.expiryDate;
+            user.hasActivePlan = true;
+          } else {
+            user.hasActivePlan = false;
           }
+        } else {
+          user.hasActivePlan = false;
         }
         return user;
       })
     );
 
+    // Filter by hasActivePlan
+    let filteredUsers = usersWithExpiry;
+    if (hasActivePlan !== undefined) {
+      const hasPlan = hasActivePlan === 'true' || hasActivePlan === true;
+      filteredUsers = usersWithExpiry.filter(user => user.hasActivePlan === hasPlan);
+    }
+
+    // Filter by plan expiry date range
+    if (planExpiryStart || planExpiryEnd) {
+      filteredUsers = filteredUsers.filter(user => {
+        if (!user.planExpiry) return false;
+        const expiryDate = new Date(user.planExpiry);
+        if (planExpiryStart && expiryDate < new Date(planExpiryStart)) return false;
+        if (planExpiryEnd && expiryDate > new Date(planExpiryEnd)) return false;
+        return true;
+      });
+    }
+
+    // Sort users
+    const sortOrder = order === 'asc' ? 1 : -1;
+    filteredUsers.sort((a, b) => {
+      let aVal = a[sortBy];
+      let bVal = b[sortBy];
+      
+      // Handle nested properties
+      if (sortBy === 'planExpiry') {
+        aVal = a.planExpiry ? new Date(a.planExpiry).getTime() : 0;
+        bVal = b.planExpiry ? new Date(b.planExpiry).getTime() : 0;
+      }
+      
+      if (aVal < bVal) return -1 * sortOrder;
+      if (aVal > bVal) return 1 * sortOrder;
+      return 0;
+    });
+
+    // Pagination
+    const totalCount = filteredUsers.length;
+    const totalPages = Math.ceil(totalCount / limit);
+    const skip = (page - 1) * limit;
+    const paginatedUsers = filteredUsers.slice(skip, skip + parseInt(limit));
+
     res.json({
-      count: usersWithExpiry.length,
-      users: usersWithExpiry
+      success: true,
+      count: totalCount,
+      page: parseInt(page),
+      totalPages,
+      limit: parseInt(limit),
+      users: paginatedUsers
     });
   } catch (error) {
     console.error('Get all users error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 

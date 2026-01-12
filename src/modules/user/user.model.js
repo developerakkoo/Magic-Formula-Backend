@@ -1,11 +1,13 @@
-const mongoose = require('mongoose')
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema(
   {
-    mobile: { type: String, required: true, unique: true },
+    mobile: { type: String, unique: true, sparse: true }, // Optional, sparse unique index allows multiple nulls
 
     fullName: String,
-    email: String,
+    email: { type: String, unique: true, sparse: true }, // Sparse unique index allows multiple nulls
+    password: { type: String }, // Required for email/password users
     whatsapp: String,
 
     // store only filename, not full URL
@@ -18,10 +20,22 @@ const userSchema = new mongoose.Schema(
 
     isBlocked: { type: Boolean, default: false },
 
+    // Device restriction fields
+    deviceId: { type: String, default: null }, // Capacitor device identifier
+    lastDeviceLogin: { type: Date }, // Last successful device login timestamp
+
     activePlan: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan' },
     planExpiry: Date
   },
   { timestamps: true }
-)
+);
+
+// Add method to compare password
+userSchema.methods.comparePassword = function (enteredPassword) {
+  if (!this.password) {
+    return Promise.resolve(false); // User doesn't have password (mobile-only registration)
+  }
+  return bcrypt.compare(enteredPassword, this.password);
+};
 
 module.exports = mongoose.model('User', userSchema)
