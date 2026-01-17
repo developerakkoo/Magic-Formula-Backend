@@ -73,6 +73,108 @@ exports.resetUserDevice = async (req, res) => {
 };
 
 /**
+ * GET DEVICE CONFLICTS
+ * Get users who have device conflicts (users with deviceId set but potential conflicts)
+ */
+exports.getDeviceConflicts = async (req, res) => {
+  try {
+    // Find users who have deviceId set
+    // Device conflicts can occur when:
+    // 1. User has deviceId but hasn't logged in recently (potential abandoned device)
+    // 2. Multiple users might be using same deviceId (rare but possible)
+    
+    const users = await User.find({
+      deviceId: { $ne: null, $exists: true }
+    })
+      .select('_id fullName email mobile deviceId lastDeviceLogin isBlocked createdAt')
+      .lean();
+
+    // Check for potential conflicts
+    const deviceMap = new Map();
+    const conflicts = [];
+
+    users.forEach(user => {
+      const deviceId = user.deviceId;
+      if (!deviceMap.has(deviceId)) {
+        deviceMap.set(deviceId, []);
+      }
+      deviceMap.get(deviceId).push(user);
+    });
+
+    // Find devices with multiple users (conflict)
+    deviceMap.forEach((usersWithSameDevice, deviceId) => {
+      if (usersWithSameDevice.length > 1) {
+        conflicts.push({
+          deviceId,
+          users: usersWithSameDevice,
+          conflictType: 'MULTIPLE_USERS'
+        });
+      }
+    });
+
+    // Also include users with old device logins (potential abandoned devices)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const abandonedDevices = users.filter(user => {
+      if (!user.lastDeviceLogin) return true;
+      const lastLogin = new Date(user.lastDeviceLogin);
+      return lastLogin < thirtyDaysAgo;
+    }).map(user => ({
+      deviceId: user.deviceId,
+      users: [user],
+      conflictType: 'ABANDONED_DEVICE'
+    }));
+
+    const allConflicts = [...conflicts, ...abandonedDevices];
+
+    res.json({
+      success: true,
+      count: allConflicts.length,
+      data: allConflicts
+    });
+  } catch (error) {
+    console.error('Get device conflicts error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch device conflicts'
+    });
+  }
+};
+
+/**
+ * ALLOW NEW DEVICE FOR USER
+ * Similar to resetUserDevice but with different naming
+ */
+exports.allowNewDevice = async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { deviceId: null, lastDeviceLogin: null },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'New device allowed. User can now login from a new device.'
+    });
+  } catch (error) {
+    console.error('Allow new device error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+/**
  * GET USER BY ID (ADMIN)
  */
 exports.getUserById = async (req, res) => {

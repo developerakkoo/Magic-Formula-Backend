@@ -20,5 +20,7 @@ app.use('/api/admin', require('./modules/admin/admin.routes'));
 app.use('/api/admin/auth', require('./modules/admin/admin.auth.routes'));
 app.use('/api/subscriptions', require('./modules/subscription/subscription.routes')); 
 app.use('/api/notifications', require('./modules/notification/notification.routes'));
+app.use('/api/admin/logs', require('./modules/logs/log.routes'));
+app.use('/api/admin/settings', require('./modules/settings/settings.routes'));
 
 module.exports = app;

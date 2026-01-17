@@ -1,5 +1,6 @@
 const Notification = require('../notification/notification.model')
 const UserNotification = require('../notification/userNotification.model')
+const User = require('../user/user.model')
 const { sendWhatsAppMessage } = require('../../services/wati.service')
 
 const { sendFirebasePush } = require('../../utils/firebasePush.utils')
@@ -246,3 +247,155 @@ exports.sendFirebaseNotifications = async (req, res) => {
 }
 
 }
+
+/**
+ * GET USER NOTIFICATIONS
+ * Get all notifications for the current authenticated user
+ */
+exports.getUserNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { page = 1, limit = 10 } = req.query;
+
+    const userNotifications = await UserNotification.find({ user: userId })
+      .populate('notification')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .lean();
+
+    const total = await UserNotification.countDocuments({ user: userId });
+
+    const notifications = userNotifications.map(item => ({
+      _id: item._id,
+      notification: item.notification,
+      status: item.status,
+      readAt: item.readAt,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt
+    }));
+
+    res.json({
+      success: true,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      data: notifications
+    });
+  } catch (error) {
+    console.error('Get user notifications error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * GET UNREAD COUNT
+ * Get count of unread notifications for the current user
+ */
+exports.getUnreadCount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const unreadCount = await UserNotification.countDocuments({
+      user: userId,
+      readAt: null
+    });
+
+    res.json({
+      success: true,
+      unreadCount
+    });
+  } catch (error) {
+    console.error('Get unread count error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * MARK NOTIFICATION AS READ
+ * Mark a specific user notification as read
+ */
+exports.markNotificationAsRead = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+
+    const userNotification = await UserNotification.findOne({
+      _id: id,
+      user: userId
+    });
+
+    if (!userNotification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found'
+      });
+    }
+
+    if (!userNotification.readAt) {
+      userNotification.readAt = new Date();
+      await userNotification.save();
+    }
+
+    res.json({
+      success: true,
+      message: 'Notification marked as read',
+      data: userNotification
+    });
+  } catch (error) {
+    console.error('Mark notification as read error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * DELETE USER NOTIFICATION
+ * Delete a specific user notification
+ */
+exports.deleteUserNotification = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+
+    const userNotification = await UserNotification.findOneAndDelete({
+      _id: id,
+      user: userId
+    });
+
+    if (!userNotification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Notification deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete user notification error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * CLEAR ALL USER NOTIFICATIONS
+ * Delete all notifications for the current user
+ */
+exports.clearAllUserNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const result = await UserNotification.deleteMany({ user: userId });
+
+    res.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: 'All notifications cleared successfully'
+    });
+  } catch (error) {
+    console.error('Clear all user notifications error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
