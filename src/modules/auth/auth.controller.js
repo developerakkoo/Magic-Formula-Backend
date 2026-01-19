@@ -278,7 +278,6 @@ exports.login = async (req, res) => {
     }
 
     // 🔒 Device restriction check
-    // Device ID should only be set during registration, not login
     if (user.deviceId) {
       // User has deviceId set - must match login request
       if (!deviceId) {
@@ -304,19 +303,19 @@ exports.login = async (req, res) => {
       user.lastDeviceLogin = new Date();
       await user.save();
     } else {
-      // User doesn't have deviceId - legacy user from before device binding was implemented
-      // Require deviceId for login - user must contact admin to set deviceId
+      // User doesn't have deviceId - either legacy user or admin reset device
+      // If deviceId is provided, set it and allow login (this handles post-reset login)
       if (!deviceId) {
         return res.status(400).json({ 
           message: 'Device ID is required for login. Please contact admin if you need assistance.' 
         });
       }
-      // Legacy user attempting login - require admin to set deviceId first
-      return res.status(403).json({
-        message: 'This account needs device registration. Please contact admin to register your device.',
-        isBlocked: false,
-        isDeviceMismatch: false
-      });
+      
+      // Set deviceId for user (handles both legacy users and post-reset login)
+      user.deviceId = deviceId;
+      user.lastDeviceLogin = new Date();
+      await user.save();
+      // Continue to login (don't return here)
     }
 
     // 🚫 Block check (admin blocking)

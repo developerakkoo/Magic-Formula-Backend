@@ -10,15 +10,16 @@ router.post('/login', adminController.login);
 // PROTECTED (ADMIN LOGIN REQUIRED)
 router.post('/create', adminController.createAdmin);
 router.get('/users', adminAuth, adminController.getAllUsers);
+// IMPORTANT: Specific routes must come before parameterized routes
+router.get('/users/device-conflicts', adminAuth, adminController.getDeviceConflicts);
 router.get('/users/:id', adminAuth, adminController.getUserById);
 router.post('/users', adminAuth, adminController.createUser);
 router.patch('/users/:id', adminAuth, adminController.updateUser);
+router.patch('/users/:id/allow-device', adminAuth, adminController.allowNewDevice);
 router.delete('/users/:id', adminAuth, adminController.deleteUser);
 router.patch('/block/:id', adminAuth, adminController.blockUser);
 router.patch('/unblock/:id', adminAuth, adminController.unblockUser);
 router.patch('/reset-device/:id', adminAuth, adminController.resetUserDevice);
-router.get('/users/device-conflicts', adminAuth, adminController.getDeviceConflicts);
-router.patch('/users/:id/allow-device', adminAuth, adminController.allowNewDevice);
 
 // router.get('/dashboard', adminAuth, adminController.getDashboardStats);
 router.get('/users-analytics', adminAuth, adminController.getUserAnalytics);

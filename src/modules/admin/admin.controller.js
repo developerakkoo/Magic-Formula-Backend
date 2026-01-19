@@ -84,26 +84,52 @@ exports.getDeviceConflicts = async (req, res) => {
     // 2. Multiple users might be using same deviceId (rare but possible)
     
     const users = await User.find({
-      deviceId: { $ne: null, $exists: true }
+      deviceId: { $ne: null }
     })
       .select('_id fullName email mobile deviceId lastDeviceLogin isBlocked createdAt')
       .lean();
+
+    if (!users || !Array.isArray(users)) {
+      return res.json({
+        success: true,
+        count: 0,
+        data: []
+      });
+    }
+
+    // Filter out users with null or empty deviceId (in case query didn't work as expected)
+    const usersWithDevices = users.filter(user => {
+      try {
+        if (!user || !user.deviceId) return false;
+        if (typeof user.deviceId !== 'string') return false;
+        return user.deviceId.trim() !== '';
+      } catch (error) {
+        console.error('Error filtering user:', error);
+        return false;
+      }
+    });
 
     // Check for potential conflicts
     const deviceMap = new Map();
     const conflicts = [];
 
-    users.forEach(user => {
-      const deviceId = user.deviceId;
-      if (!deviceMap.has(deviceId)) {
-        deviceMap.set(deviceId, []);
+    usersWithDevices.forEach(user => {
+      try {
+        const deviceId = user.deviceId;
+        if (deviceId) {
+          if (!deviceMap.has(deviceId)) {
+            deviceMap.set(deviceId, []);
+          }
+          deviceMap.get(deviceId).push(user);
+        }
+      } catch (error) {
+        console.error('Error processing user device:', error);
       }
-      deviceMap.get(deviceId).push(user);
     });
 
     // Find devices with multiple users (conflict)
     deviceMap.forEach((usersWithSameDevice, deviceId) => {
-      if (usersWithSameDevice.length > 1) {
+      if (usersWithSameDevice && usersWithSameDevice.length > 1) {
         conflicts.push({
           deviceId,
           users: usersWithSameDevice,
@@ -116,10 +142,16 @@ exports.getDeviceConflicts = async (req, res) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const abandonedDevices = users.filter(user => {
-      if (!user.lastDeviceLogin) return true;
-      const lastLogin = new Date(user.lastDeviceLogin);
-      return lastLogin < thirtyDaysAgo;
+    const abandonedDevices = usersWithDevices.filter(user => {
+      try {
+        if (!user.lastDeviceLogin) return true;
+        const lastLogin = new Date(user.lastDeviceLogin);
+        if (isNaN(lastLogin.getTime())) return false; // Invalid date
+        return lastLogin < thirtyDaysAgo;
+      } catch (error) {
+        // If date parsing fails, consider it abandoned
+        return true;
+      }
     }).map(user => ({
       deviceId: user.deviceId,
       users: [user],
@@ -135,9 +167,11 @@ exports.getDeviceConflicts = async (req, res) => {
     });
   } catch (error) {
     console.error('Get device conflicts error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch device conflicts'
+      message: 'Failed to fetch device conflicts',
+      error: error.message || 'Unknown error'
     });
   }
 };
