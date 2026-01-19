@@ -97,9 +97,24 @@ exports.getAllPlans = async (req, res) => {
  */
 exports.updatePlan = async (req, res) => {
   try {
-    const plan = await Plan.findById(req.params.planId);
-    if (!plan) return res.status(404).json({ message: 'Plan not found' });
+    const { planId } = req.params;
+    
+    if (!planId) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Plan ID is required' 
+      });
+    }
 
+    const plan = await Plan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Plan not found' 
+      });
+    }
+
+    // Update plan fields
     Object.assign(plan, req.body);
     await plan.save();
 
@@ -108,8 +123,14 @@ exports.updatePlan = async (req, res) => {
       message: 'Plan updated successfully',
       data: plan
     });
-  } catch {
-    res.status(500).json({ message: 'Server error' });
+  } catch (error) {
+    console.error('Update plan error:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Failed to update plan',
+      error: error.name
+    });
   }
 };
 
@@ -117,13 +138,40 @@ exports.updatePlan = async (req, res) => {
  * DELETE PLAN (SOFT DELETE)
  */
 exports.deletePlan = async (req, res) => {
-  const plan = await Plan.findById(req.params.planId);
-  if (!plan) return res.status(404).json({ message: 'Plan not found' });
+  try {
+    const { planId } = req.params;
+    
+    if (!planId) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Plan ID is required' 
+      });
+    }
 
-  plan.isActive = false;
-  await plan.save();
+    const plan = await Plan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Plan not found' 
+      });
+    }
 
-  res.json({ success: true, message: 'Plan disabled successfully' });
+    plan.isActive = false;
+    await plan.save();
+
+    res.json({ 
+      success: true, 
+      message: 'Plan disabled successfully' 
+    });
+  } catch (error) {
+    console.error('Delete plan error:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Failed to delete plan',
+      error: error.name
+    });
+  }
 };
 
 /**
