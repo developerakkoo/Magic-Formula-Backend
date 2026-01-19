@@ -415,6 +415,139 @@ exports.blockUserForDeviceMismatch = async (req, res) => {
 };
 
 /**
+ * CREATE PENALTY PAYMENT ORDER
+ * Creates Razorpay order for penalty payment
+ */
+exports.createPenaltyPaymentOrder = async (req, res) => {
+  try {
+    const { email, amount = 500 } = req.body; // Default penalty 500
+    
+    if (!email) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Email is required' 
+      });
+    }
+    
+    const user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+    
+    // Get Razorpay instance
+    const getRazorpayInstance = require('../../config/razorpay');
+    const razorpay = getRazorpayInstance();
+    
+    // Amount in paise
+    const amountInPaise = amount * 100;
+    
+    // Create Razorpay order
+    const order = await razorpay.orders.create({
+      amount: amountInPaise,
+      currency: 'INR',
+      receipt: `penalty_${user._id.toString().slice(-6)}_${Date.now().toString().slice(-6)}`,
+      notes: {
+        userId: user._id.toString(),
+        email: email,
+        type: 'penalty'
+      }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Penalty payment order created',
+      data: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency
+      }
+    });
+  } catch (error) {
+    console.error('Create penalty payment order error:', error);
+    
+    // Handle Razorpay configuration errors
+    if (error.message && error.message.includes('Razorpay configuration missing')) {
+      return res.status(500).json({ 
+        success: false,
+        message: 'Payment service is not configured. Please contact support.' 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to create payment order' 
+    });
+  }
+};
+
+/**
+ * VERIFY PENALTY PAYMENT
+ * Verifies Razorpay payment and unblocks user, resets device ID
+ */
+exports.verifyPenaltyPayment = async (req, res) => {
+  try {
+    const {
+      email,
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature
+    } = req.body;
+    
+    if (!email || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'All payment details are required' 
+      });
+    }
+    
+    // Verify Razorpay signature
+    const crypto = require('crypto');
+    const generatedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+    
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Payment verification failed' 
+      });
+    }
+    
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+    
+    // Unblock user and reset device ID
+    user.isBlocked = false;
+    user.deviceId = null;
+    user.lastDeviceLogin = null;
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: 'Penalty paid successfully. Account unblocked and device reset.'
+    });
+  } catch (error) {
+    console.error('Verify penalty payment error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Payment verification failed' 
+    });
+  }
+};
+
+/**
  * LOGOUT
  * Requires authentication middleware
  */
