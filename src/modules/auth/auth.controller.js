@@ -366,6 +366,55 @@ exports.login = async (req, res) => {
 };
 
 /**
+ * BLOCK USER FOR DEVICE MISMATCH
+ * Blocks user when they confirm device mismatch
+ */
+exports.blockUserForDeviceMismatch = async (req, res) => {
+  try {
+    const { email, deviceId } = req.body;
+    
+    if (!email || !deviceId) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Email and device ID are required' 
+      });
+    }
+    
+    const user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+    
+    // Verify device mismatch
+    if (user.deviceId === deviceId) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Device ID matches. No mismatch detected.' 
+      });
+    }
+    
+    // Block user
+    user.isBlocked = true;
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: 'User blocked due to device mismatch'
+    });
+  } catch (error) {
+    console.error('Block user for device mismatch error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error' 
+    });
+  }
+};
+
+/**
  * LOGOUT
  * Requires authentication middleware
  */
