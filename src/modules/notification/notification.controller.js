@@ -256,30 +256,40 @@ exports.getUserNotifications = async (req, res) => {
   try {
     const userId = req.user._id;
     const { page = 1, limit = 10 } = req.query;
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
 
     const userNotifications = await UserNotification.find({ user: userId })
       .populate('notification')
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
       .lean();
 
     const total = await UserNotification.countDocuments({ user: userId });
+    const totalPages = Math.ceil(total / limitNum);
 
-    const notifications = userNotifications.map(item => ({
-      _id: item._id,
-      notification: item.notification,
-      status: item.status,
-      readAt: item.readAt,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt
-    }));
+    // Flatten the nested notification object and add read boolean
+    const notifications = userNotifications.map(item => {
+      const notification = item.notification || {};
+      return {
+        _id: item._id,
+        title: notification.title || '',
+        message: notification.message || '',
+        type: notification.type || 'INFO',
+        read: item.readAt !== null && item.readAt !== undefined,
+        readAt: item.readAt || null,
+        createdAt: item.createdAt || notification.createdAt || new Date()
+      };
+    });
 
     res.json({
       success: true,
+      count: total,
       total,
-      page: Number(page),
-      limit: Number(limit),
+      page: pageNum,
+      limit: limitNum,
+      totalPages: totalPages,
       data: notifications
     });
   } catch (error) {
