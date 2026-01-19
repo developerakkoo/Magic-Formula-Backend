@@ -146,10 +146,18 @@ exports.assignPlanToUser = async (req, res) => {
       { isActive: false }
     );
 
-    /* 2️⃣ Calculate dates */
+    /* 2️⃣ Calculate dates - Handle month-end edge cases properly */
     const startDate = new Date();
-    const expiryDate = new Date();
-    expiryDate.setMonth(expiryDate.getMonth() + plan.durationInMonths);
+    const expiryDate = new Date(startDate);
+    expiryDate.setFullYear(
+      expiryDate.getFullYear(),
+      expiryDate.getMonth() + plan.durationInMonths,
+      expiryDate.getDate()
+    );
+    // Handle month-end edge cases (e.g., Jan 31 + 1 month = Feb 28/29)
+    if (expiryDate.getDate() !== startDate.getDate()) {
+      expiryDate.setDate(0); // Set to last day of previous month
+    }
 
     /* 3️⃣ Create new subscription */
     const subscription = await UserSubscription.create({
@@ -236,15 +244,10 @@ exports.subscriptionAnalytics = async (req, res) => {
  * GET ACTIVE PLANS (USER)
  */
 exports.getActivePlans = async (req, res) => {
-  const now = new Date();
-
+  // Show all active plans regardless of offer status
   const plans = await Plan.find({
-    isActive: true,
-    $or: [
-      { showOfferBadge: false },
-      { offerEndAt: { $gte: now } }
-    ]
-  });
+    isActive: true
+  }).sort({ createdAt: -1 });
 
   res.json({ success: true, data: plans });
 };
@@ -376,10 +379,18 @@ exports.verifyPayment = async (req, res) => {
       { isActive: false }
     );
 
-    /* 4️⃣ Calculate dates */
+    /* 4️⃣ Calculate dates - Handle month-end edge cases properly */
     const startDate = new Date();
-    const expiryDate = new Date();
-    expiryDate.setMonth(expiryDate.getMonth() + plan.durationInMonths);
+    const expiryDate = new Date(startDate);
+    expiryDate.setFullYear(
+      expiryDate.getFullYear(),
+      expiryDate.getMonth() + plan.durationInMonths,
+      expiryDate.getDate()
+    );
+    // Handle month-end edge cases (e.g., Jan 31 + 1 month = Feb 28/29)
+    if (expiryDate.getDate() !== startDate.getDate()) {
+      expiryDate.setDate(0); // Set to last day of previous month
+    }
 
     /* 5️⃣ Create subscription */
     const subscription = await UserSubscription.create({
