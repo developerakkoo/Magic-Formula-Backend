@@ -54,7 +54,12 @@ exports.resetUserDevice = async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { deviceId: null, lastDeviceLogin: null },
+      { 
+        deviceId: null, 
+        lastDeviceLogin: null,
+        deviceChangeRequested: false,
+        deviceChangeRequestedAt: null
+      },
       { new: true }
     );
     
@@ -158,7 +163,21 @@ exports.getDeviceConflicts = async (req, res) => {
       conflictType: 'ABANDONED_DEVICE'
     }));
 
-    const allConflicts = [...conflicts, ...abandonedDevices];
+    // Include users with pending device change requests
+    const deviceChangeRequests = await User.find({
+      deviceChangeRequested: true
+    })
+      .select('_id fullName email mobile deviceId lastDeviceLogin isBlocked deviceChangeRequestedAt createdAt')
+      .lean();
+
+    const deviceChangeRequestConflicts = deviceChangeRequests.map(user => ({
+      deviceId: user.deviceId || null,
+      users: [user],
+      conflictType: 'DEVICE_CHANGE_REQUESTED',
+      requestedAt: user.deviceChangeRequestedAt
+    }));
+
+    const allConflicts = [...conflicts, ...abandonedDevices, ...deviceChangeRequestConflicts];
 
     res.json({
       success: true,

@@ -73,6 +73,8 @@ exports.getCurrentUserProfile = async (req, res) => {
       planExpiry: user.planExpiry,
       deviceId: user.deviceId,
       lastDeviceLogin: user.lastDeviceLogin,
+      deviceChangeRequested: user.deviceChangeRequested,
+      deviceChangeRequestedAt: user.deviceChangeRequestedAt,
       profilePic: user.profilePic
         ? `${baseUrl}/api/users/${user._id}`
         : null,
@@ -225,6 +227,41 @@ exports.updateUserActivity = async (req, res) => {
   } catch (error) {
     console.error('Update activity error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * REQUEST DEVICE CHANGE
+ * Creates a device change request - user will be logged out until admin approves
+ * Uses req.user from authMiddleware
+ */
+exports.requestDeviceChange = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    // Check if request already pending
+    if (user.deviceChangeRequested) {
+      return res.status(400).json({
+        success: false,
+        message: 'Device change request is already pending. Please wait for admin approval.'
+      });
+    }
+    
+    // Set device change request flags
+    user.deviceChangeRequested = true;
+    user.deviceChangeRequestedAt = new Date();
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Device change request submitted successfully. You will be logged out until admin approves your request.'
+    });
+  } catch (error) {
+    console.error('Request device change error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 };
 

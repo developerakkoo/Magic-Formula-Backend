@@ -24,6 +24,8 @@ const userSchema = new mongoose.Schema(
     deviceId: { type: String, default: null }, // Capacitor device identifier
     lastDeviceLogin: { type: Date }, // Last successful device login timestamp
     lastActivity: { type: Date }, // Last activity timestamp (for live user tracking)
+    deviceChangeRequested: { type: Boolean, default: false }, // Device change request pending
+    deviceChangeRequestedAt: { type: Date }, // When device change was requested
 
     activePlan: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan' },
     planExpiry: Date
