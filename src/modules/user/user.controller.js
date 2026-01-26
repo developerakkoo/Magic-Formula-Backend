@@ -232,7 +232,7 @@ exports.updateUserActivity = async (req, res) => {
 
 /**
  * REQUEST DEVICE CHANGE
- * Creates a device change request - user will be logged out until admin approves
+ * Creates a device change request - user will be blocked and logged out until admin approves
  * Uses req.user from authMiddleware
  */
 exports.requestDeviceChange = async (req, res) => {
@@ -247,14 +247,15 @@ exports.requestDeviceChange = async (req, res) => {
       });
     }
     
-    // Set device change request flags
+    // Set device change request flags and block user
     user.deviceChangeRequested = true;
     user.deviceChangeRequestedAt = new Date();
+    user.isBlocked = true; // Block user until admin approves
     await user.save();
 
     res.json({
       success: true,
-      message: 'Device change request submitted successfully. You will be logged out until admin approves your request.'
+      message: 'Device change request submitted successfully. You will be logged out and blocked until admin approves your request.'
     });
   } catch (error) {
     console.error('Request device change error:', error);

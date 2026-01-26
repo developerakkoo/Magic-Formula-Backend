@@ -58,7 +58,8 @@ exports.resetUserDevice = async (req, res) => {
         deviceId: null, 
         lastDeviceLogin: null,
         deviceChangeRequested: false,
-        deviceChangeRequestedAt: null
+        deviceChangeRequestedAt: null,
+        isBlocked: false // Unblock user when resetting device
       },
       { new: true }
     );
@@ -203,7 +204,13 @@ exports.allowNewDevice = async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { deviceId: null, lastDeviceLogin: null },
+      { 
+        deviceId: null, 
+        lastDeviceLogin: null,
+        deviceChangeRequested: false,
+        deviceChangeRequestedAt: null,
+        isBlocked: false // Unblock user when approving device change request
+      },
       { new: true }
     );
     
