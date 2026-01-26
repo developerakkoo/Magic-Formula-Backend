@@ -202,6 +202,32 @@ exports.changePassword = async (req, res) => {
   }
 };
 
+/**
+ * UPDATE USER ACTIVITY (Heartbeat)
+ * Updates lastActivity timestamp for live user tracking
+ * Uses req.user from authMiddleware
+ */
+exports.updateUserActivity = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    // Update lastActivity timestamp
+    user.lastActivity = new Date();
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Activity updated successfully',
+      data: {
+        lastActivity: user.lastActivity
+      }
+    });
+  } catch (error) {
+    console.error('Update activity error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.getUserAnalytics = async (req, res) => {
   const totalUsers = await User.countDocuments();
   const subscribedUsers = await User.countDocuments({ isSubscribed: true });

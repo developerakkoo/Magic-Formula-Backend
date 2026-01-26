@@ -11,6 +11,7 @@ router.get('/profile', authMiddleware, userController.getCurrentUserProfile);
 router.put('/profile', authMiddleware, userController.updateCurrentUserProfile);
 router.put('/profile/password', authMiddleware, userController.changePassword);
 router.post('/profile-pic', authMiddleware, upload.single('profilePic'), userController.uploadProfilePic);
+router.post('/activity', authMiddleware, userController.updateUserActivity); // Heartbeat endpoint for live user tracking
 
 // User notification routes
 router.get('/notifications', authMiddleware, notificationController.getUserNotifications);

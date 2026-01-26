@@ -159,7 +159,8 @@ exports.registerMobile = async (req, res) => {
         activePlan: activePlan || null,
         planExpiry: planExpiry || null,
         deviceId: deviceId || null,
-        lastDeviceLogin: deviceId ? new Date() : null
+        lastDeviceLogin: deviceId ? new Date() : null,
+        lastActivity: new Date() // Set initial activity on registration
       });
     } else {
       // 🔁 Update only provided fields
@@ -188,8 +189,14 @@ exports.registerMobile = async (req, res) => {
           } else {
             // Device ID matches, update last login timestamp
             user.lastDeviceLogin = new Date();
+            user.lastActivity = new Date(); // Update activity on login
           }
         }
+      }
+
+      // Update lastActivity if not already set
+      if (!user.lastActivity) {
+        user.lastActivity = new Date();
       }
 
       await user.save();
@@ -299,8 +306,9 @@ exports.login = async (req, res) => {
         });
       }
       
-      // Device ID matches - update last login timestamp
+      // Device ID matches - update last login timestamp and activity
       user.lastDeviceLogin = new Date();
+      user.lastActivity = new Date(); // Update activity on login
       await user.save();
     } else {
       // User doesn't have deviceId - either legacy user or admin reset device
@@ -314,6 +322,7 @@ exports.login = async (req, res) => {
       // Set deviceId for user (handles both legacy users and post-reset login)
       user.deviceId = deviceId;
       user.lastDeviceLogin = new Date();
+      user.lastActivity = new Date(); // Update activity on login
       await user.save();
       // Continue to login (don't return here)
     }

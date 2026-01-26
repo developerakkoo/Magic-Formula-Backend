@@ -555,24 +555,37 @@ exports.login = async (req, res) => {
 
 
 exports.getUserAnalytics = async (req, res) => {
-  const totalUsers = await User.countDocuments();
-  const subscribedUsers = await User.countDocuments({ isSubscribed: true });
-  const unsubscribedUsers = totalUsers - subscribedUsers;
-  const blockedUsers = await User.countDocuments({ isBlocked: true });
-  // Redis disabled - return 0 for liveUsers
-  // const liveUsers = await getLiveUsersCount();
-  const liveUsers = 0;
+  try {
+    const totalUsers = await User.countDocuments();
+    const subscribedUsers = await User.countDocuments({ isSubscribed: true });
+    const unsubscribedUsers = totalUsers - subscribedUsers;
+    const blockedUsers = await User.countDocuments({ isBlocked: true });
+    
+    // Calculate live users: users active within last 30 minutes
+    // A user is considered "live" if their lastActivity is within the last 30 minutes
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const liveUsers = await User.countDocuments({
+      lastActivity: { $gte: thirtyMinutesAgo },
+      isBlocked: false // Exclude blocked users from live count
+    });
 
-  res.json({
-    success: true,
-    data: {
-      totalUsers,
-      liveUsers,
-      subscribedUsers,
-      blockedUsers,
-      unsubscribedUsers,
-    },
-  });
+    res.json({
+      success: true,
+      data: {
+        totalUsers,
+        liveUsers,
+        subscribedUsers,
+        blockedUsers,
+        unsubscribedUsers,
+      },
+    });
+  } catch (error) {
+    console.error('Get user analytics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user analytics'
+    });
+  }
 };
 
 

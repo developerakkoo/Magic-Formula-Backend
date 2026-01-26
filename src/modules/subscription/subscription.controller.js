@@ -156,8 +156,12 @@ exports.deletePlan = async (req, res) => {
       });
     }
 
-    plan.isActive = false;
-    await plan.save();
+    // Use updateOne to avoid validation issues with required fields
+    // This is safer for soft deletes as it doesn't trigger full document validation
+    await Plan.updateOne(
+      { _id: planId },
+      { $set: { isActive: false } }
+    );
 
     res.json({ 
       success: true, 

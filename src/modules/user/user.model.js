@@ -23,6 +23,7 @@ const userSchema = new mongoose.Schema(
     // Device restriction fields
     deviceId: { type: String, default: null }, // Capacitor device identifier
     lastDeviceLogin: { type: Date }, // Last successful device login timestamp
+    lastActivity: { type: Date }, // Last activity timestamp (for live user tracking)
 
     activePlan: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan' },
     planExpiry: Date
