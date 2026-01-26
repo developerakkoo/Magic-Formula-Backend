@@ -95,6 +95,8 @@ exports.register = async (req, res) => {
       isBlocked: user.isBlocked,
       activePlan: user.activePlan,
       planExpiry: user.planExpiry,
+      deviceChangeRequested: user.deviceChangeRequested,
+      deviceChangeRequestedAt: user.deviceChangeRequestedAt,
       profilePic: user.profilePic
         ? `${baseUrl}/api/users/${user._id}`
         : null
@@ -233,6 +235,8 @@ exports.registerMobile = async (req, res) => {
       isBlocked: user.isBlocked,
       activePlan: user.activePlan,
       planExpiry: user.planExpiry,
+      deviceChangeRequested: user.deviceChangeRequested,
+      deviceChangeRequestedAt: user.deviceChangeRequestedAt,
       profilePic: user.profilePic
         ? `${baseUrl}/api/users/${user._id}`
         : null
@@ -355,6 +359,8 @@ exports.login = async (req, res) => {
       isBlocked: user.isBlocked,
       activePlan: user.activePlan,
       planExpiry: user.planExpiry,
+      deviceChangeRequested: user.deviceChangeRequested,
+      deviceChangeRequestedAt: user.deviceChangeRequestedAt,
       profilePic: user.profilePic
         ? `${baseUrl}/api/users/${user._id}`
         : null
