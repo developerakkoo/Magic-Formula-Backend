@@ -1,7 +1,9 @@
 const admin = require('firebase-admin');
+const path = require('path');
 
 if (!admin.apps.length) {
-  const serviceAccount = require('../../magic-formula-d55e8-firebase-adminsdk-fbsvc-f0f70a2c7c.json');
+  const serviceAccountPath = path.join(process.cwd(), 'firebase.json');
+  const serviceAccount = require(serviceAccountPath);
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
