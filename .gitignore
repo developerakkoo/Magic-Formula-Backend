@@ -1,9 +1,9 @@
 # Environment variables
-# .env
+.env
 
-# # Node modules
+# Node modules
 node_modules/
 
 
 # Firebase secrets
-# magic-formula-d55e8-firebase-adminsdk-fbsvc-f0f70a2c7c.json
+magic-formula-d55e8-firebase-adminsdk-fbsvc-f0f70a2c7c.json
