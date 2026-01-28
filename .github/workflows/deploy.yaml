@@ -1,10 +1,9 @@
-name: Deploy NodeJS Application to AWS
+name: Deploy NodeJS Application to Hostinger
 
-on: 
+on:
   push:
     branches:
       - main
-
 
 jobs:
   Deploy:
@@ -12,19 +11,16 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/Checkout@v4
+        uses: actions/checkout@v4
 
-
-      - name: Deploy via ssh
-        uses: application/ssh-actions@v1.0.3
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: root
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd /root/Magic-Formula-Backend
-            git pull
+            git pull origin main
+            docker compose down
             docker compose up -d --build
-
-
-
