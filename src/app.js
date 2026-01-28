@@ -6,7 +6,33 @@ require('./cron/subscriptionReminder'); // (cron is loaded)
 require('./cron/subscriptionExpiry');
 
 app.use(express.json());
-app.use(cors());
+
+// CORS Configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:8100',  // Ionic dev server
+      'http://localhost:4200',  // Angular dev server (if used)
+      process.env.CORS_ORIGIN_PROD || 'https://your-production-domain.com'
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,  // Allow cookies/auth headers
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Authorization'],
+  maxAge: 86400  // Cache preflight for 24 hours
+};
+
+app.use(cors(corsOptions));
 
 // health check
 app.get('/health', (req, res) => {

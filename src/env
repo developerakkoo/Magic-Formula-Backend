@@ -16,3 +16,8 @@ RAZORPAY_KEY_SECRET=FORM4hrZrQO8JFIiYsQSC83N
 WATI_API_KEY=your_wati_api_key
 WATI_BASE_URL=https://live-mt-server.wati.io
 WATI_WHATSAPP_NUMBER=91XXXXXXXXXX
+
+# CORS Configuration
+CORS_ORIGIN_DEV=http://localhost:8100
+CORS_ORIGIN_PROD=https://your-production-domain.com
+NODE_ENV=development
