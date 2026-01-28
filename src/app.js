@@ -10,7 +10,7 @@ app.use(cors());
 
 // health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK2' });
+  res.json({ status: 'OK3' });
 });
 
 // ROUTES
