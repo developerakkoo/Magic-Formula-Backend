@@ -1,0 +1,30 @@
+name: Deploy NodeJS Application to AWS
+
+on: 
+  push:
+    branches:
+      - main
+
+
+jobs:
+  Deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/Checkout@v4
+
+
+      - name: Deploy via ssh
+        uses: application/ssh-actions@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: root
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /root/Magic-Formula-Backend
+            git pull
+            docker compose up -d --build
+
+
+
