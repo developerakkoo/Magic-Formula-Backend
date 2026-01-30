@@ -15,6 +15,7 @@ const corsOptions = {
     
     const allowedOrigins = [
       'http://localhost:8100',  // Ionic dev server
+      'http://localhost:8101',  // Ionic dev server (alternative port)
       'http://localhost:4200',  // Angular dev server (if used)
       process.env.CORS_ORIGIN_PROD || 'https://your-production-domain.com'
     ];
