@@ -583,16 +583,23 @@ exports.login = async (req, res) => {
 exports.getUserAnalytics = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
-    const subscribedUsers = await User.countDocuments({ isSubscribed: true });
-    const unsubscribedUsers = totalUsers - subscribedUsers;
     const blockedUsers = await User.countDocuments({ isBlocked: true });
-    
-    // Calculate live users: users active within last 30 minutes
-    // A user is considered "live" if their lastActivity is within the last 30 minutes
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+    // Subscribed users: distinct users with at least one active subscription (isActive + not expired)
+    const now = new Date();
+    const subscribedUserIds = await UserSubscription.distinct('userId', {
+      isActive: true,
+      expiryDate: { $gt: now }
+    });
+    const subscribedUsers = subscribedUserIds.length;
+    const unsubscribedUsers = Math.max(0, totalUsers - subscribedUsers);
+
+    // Live users (today): users active since start of current day
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const liveUsers = await User.countDocuments({
-      lastActivity: { $gte: thirtyMinutesAgo },
-      isBlocked: false // Exclude blocked users from live count
+      lastActivity: { $gte: todayStart },
+      isBlocked: false
     });
 
     res.json({

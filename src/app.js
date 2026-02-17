@@ -14,13 +14,14 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
+      '*',  // Allow all origins when present
       'http://localhost:8100',  // Ionic dev server
       'http://localhost:8101',  // Ionic dev server (alternative port)
       'http://localhost:4200',  // Angular dev server (if used)
       process.env.CORS_ORIGIN_PROD || 'https://your-production-domain.com'
     ];
     
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+    if (allowedOrigins.indexOf('*') !== -1 || allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
