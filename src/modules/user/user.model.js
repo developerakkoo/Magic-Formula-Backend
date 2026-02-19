@@ -3,10 +3,10 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema(
   {
-    mobile: { type: String, unique: true, sparse: true }, // Optional, sparse unique index allows multiple nulls
+    mobile: { type: String },
 
     fullName: String,
-    email: { type: String, unique: true, sparse: true }, // Sparse unique index allows multiple nulls
+    email: { type: String },
     password: { type: String }, // Required for email/password users
     whatsapp: String,
 
@@ -31,6 +31,16 @@ const userSchema = new mongoose.Schema(
     planExpiry: Date
   },
   { timestamps: true }
+);
+
+// Keep uniqueness only for meaningful non-empty values.
+userSchema.index(
+  { email: 1 },
+  { unique: true, partialFilterExpression: { email: { $exists: true, $type: 'string' } } }
+);
+userSchema.index(
+  { whatsapp: 1 },
+  { unique: true, partialFilterExpression: { whatsapp: { $exists: true, $type: 'string' } } }
 );
 
 // Add method to compare password

@@ -14,7 +14,6 @@ exports.register = async (req, res) => {
       email,
       password,
       fullName,
-      mobile,
       whatsapp,
       profilePic,
       firebaseToken,
@@ -23,8 +22,8 @@ exports.register = async (req, res) => {
       deviceId
     } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
+    if (!email || !password || !whatsapp) {
+      return res.status(400).json({ message: 'Email, password, and WhatsApp number are required' });
     }
 
     // Device ID is required for registration
@@ -33,20 +32,18 @@ exports.register = async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ 
-      $or: [
-        { email: email.toLowerCase() },
-        { mobile: mobile }
-      ].filter(Boolean)
+    const existingUser = await User.findOne({
+      $or: [{ email: email.toLowerCase() }, { whatsapp }]
     });
 
     if (existingUser) {
       if (existingUser.email === email.toLowerCase()) {
         return res.status(409).json({ message: 'User with this email already exists' });
       }
-      if (mobile && existingUser.mobile === mobile) {
-        return res.status(409).json({ message: 'User with this mobile number already exists' });
+      if (existingUser.whatsapp === whatsapp) {
+        return res.status(409).json({ message: 'User with this WhatsApp number already exists' });
       }
+      return res.status(409).json({ message: 'User already exists' });
     }
 
     // Hash password
@@ -57,7 +54,6 @@ exports.register = async (req, res) => {
       email: email.toLowerCase(),
       password: hashedPassword,
       fullName,
-      mobile: mobile || null,
       whatsapp,
       profilePic,
       firebaseToken,
@@ -87,7 +83,6 @@ exports.register = async (req, res) => {
     // 🎯 Response object
     const userResponse = {
       _id: user._id,
-      mobile: user.mobile,
       fullName: user.fullName,
       email: user.email,
       whatsapp: user.whatsapp,
@@ -114,7 +109,16 @@ exports.register = async (req, res) => {
   } catch (error) {
     console.error('Registration error:', error);
     if (error.code === 11000) {
-      return res.status(409).json({ message: 'User with this email or mobile already exists' });
+      if (error.keyPattern?.email) {
+        return res.status(409).json({ message: 'User with this email already exists' });
+      }
+      if (error.keyPattern?.mobile) {
+        return res.status(409).json({ message: 'Duplicate mobile index conflict. Please drop old mobile_1 index from database.' });
+      }
+      if (error.keyPattern?.whatsapp) {
+        return res.status(409).json({ message: 'User with this WhatsApp number already exists' });
+      }
+      return res.status(409).json({ message: 'Duplicate value already exists' });
     }
     res.status(500).json({ message: 'Server error' });
   }
@@ -263,29 +267,31 @@ exports.registerMobile = async (req, res) => {
  */
 exports.login = async (req, res) => {
   try {
-    const { email, password, deviceId } = req.body;
+    const { email, whatsapp, password, deviceId } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
+    if ((!email && !whatsapp) || !password) {
+      return res.status(400).json({ message: 'Email or WhatsApp number and password are required' });
     }
 
-    // 🔍 Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() });
+    // Find user by email or WhatsApp
+    const user = await User.findOne(
+      email ? { email: email.toLowerCase() } : { whatsapp }
+    );
 
     if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // 🔐 Verify password
     if (!user.password) {
       return res.status(401).json({ 
-        message: 'This account was registered with mobile. Please use mobile registration or contact admin.' 
+        message: 'This account does not have a password set. Please contact admin.' 
       });
     }
 
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // 🔒 Device restriction check
@@ -581,3 +587,5 @@ exports.logout = async (req, res) => {
     res.status(500).json({ message: 'Logout failed' });
   }
 };
+
+
