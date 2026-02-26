@@ -1,4 +1,8 @@
-require('dotenv').config({ path: './src/env' });
+const dotenv = require('dotenv');
+
+// Prefer root .env, keep src/env as backward-compatible fallback.
+dotenv.config({ path: './.env' });
+dotenv.config({ path: './src/env', override: false });
 
 const app = require('./app');
 const connectDB = require('./config/db');

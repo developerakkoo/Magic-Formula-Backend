@@ -27,6 +27,11 @@ const userSchema = new mongoose.Schema(
     deviceChangeRequested: { type: Boolean, default: false }, // Device change request pending
     deviceChangeRequestedAt: { type: Date }, // When device change was requested
 
+    otpCodeHash: { type: String, default: null },
+    otpExpiresAt: { type: Date, default: null },
+    otpLastSentAt: { type: Date, default: null },
+    otpAttempts: { type: Number, default: 0 },
+
     activePlan: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan' },
     planExpiry: Date
   },

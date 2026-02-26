@@ -1,24 +1,147 @@
+// const axios = require('axios');
+
+// const buildAuthHeader = () => {
+//   const token = process.env.WATI_ACCESS_TOKEN;
+//   if (!token) return null;
+//   return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+// };
+
+// const trimTrailingSlash = (value) =>
+//   String(value || '').replace(/\/+$/, '');
+
+// const sendWhatsAppTemplate = async (phone, templateName, otpCode) => {
+//   try {
+//     const authorizationHeader = buildAuthHeader();
+//     const baseUrl = trimTrailingSlash(process.env.WATI_BASE_URL);
+
+//     const response = await axios.post(
+//       `${baseUrl}/api/v1/sendTemplateMessage?whatsappNumber=${phone}`,
+//       {
+//         template_name: templateName,
+//         broadcast_name: "MagicFormulaOTP",
+//         parameters: [
+//           {
+//             name: "1",
+//             value: otpCode
+//           }
+//         ]
+//       },
+//       {
+//         headers: {
+//           Authorization: authorizationHeader,
+//           "Content-Type": "application/json"
+//         }
+//       }
+//     );
+
+//     return { success: true, data: response.data };
+
+//   } catch (error) {
+//     return {
+//       success: false,
+//       error: error.response?.data || error.message
+//     };
+//   }
+// };
+
+// module.exports = { sendWhatsAppTemplate };
+
+
 const axios = require('axios');
 
-const sendWhatsAppMessage = async (phone, message) => {
+const buildAuthHeader = () => {
+  const token = process.env.WATI_ACCESS_TOKEN;
+  if (!token) {
+    throw new Error('WATI_ACCESS_TOKEN is missing in environment variables');
+  }
+  return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+};
+
+const trimTrailingSlash = (value) =>
+  String(value || '').replace(/\/+$/, '');
+
+// Ensure phone format: 91XXXXXXXXXX (no +)
+const formatPhoneNumber = (phone) => {
+  let formatted = phone.toString().replace(/\D/g, '');
+  if (!formatted.startsWith('91')) {
+    formatted = '91' + formatted;
+  }
+  return formatted;
+};
+
+/**
+ * Generic Template Sender
+ * @param {String} phone
+ * @param {String} templateName
+ * @param {Array} parametersArray  Example: ["Shubham"] OR ["123456"]
+ */
+const sendWhatsAppTemplate = async (phone, templateName, parametersArray = []) => {
   try {
+    const authorizationHeader = buildAuthHeader();
+    const baseUrl = trimTrailingSlash(process.env.WATI_BASE_URL);
+
+    const formattedPhone = formatPhoneNumber(phone);
+
+    // Convert simple array → WATI format
+    const formattedParams = parametersArray.map((value, index) => ({
+      name: `${index + 1}`,
+      value: value.toString()
+    }));
+
     const response = await axios.post(
-      `${process.env.WATI_BASE_URL}/api/v1/sendSessionMessage/${phone}`,
+      `${baseUrl}/api/v1/sendTemplateMessage?whatsappNumber=${formattedPhone}`,
       {
-        messageText: message,
+        template_name: templateName,
+        broadcast_name: templateName,
+        parameters: formattedParams
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.WATI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
+          Authorization: authorizationHeader,
+          "Content-Type": "application/json"
+        }
       }
     );
 
-    return { success: true, data: response.data };
+    return {
+      success: true,
+      data: response.data
+    };
+
   } catch (error) {
-    return { success: false, error: error.response?.data || error.message };
+    console.error("WATI SEND ERROR:", error.response?.data || error.message);
+
+    return {
+      success: false,
+      error: error.response?.data || error.message
+    };
   }
 };
 
-module.exports = { sendWhatsAppMessage };
+/* ======================================================
+   Helper Functions For Your Two Templates
+   ====================================================== */
+
+// 1️⃣ OTP Template
+const sendOTPMessage = async (phone, otpCode) => {
+  return sendWhatsAppTemplate(
+    phone,
+    "magic_formula_otp_v3",
+    [otpCode]
+  );
+};
+
+// 2️⃣ Bulk User Onboarding Template
+const sendBulkUserWelcomeMessage = async (phone, fullName) => {
+  return sendWhatsAppTemplate(
+    phone,
+    "bulk_user_onboarding_v6",
+    [fullName]
+  );
+};
+
+module.exports = {
+  sendWhatsAppTemplate,
+  sendOTPMessage,
+  sendBulkUserWelcomeMessage
+};
