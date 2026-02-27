@@ -1190,8 +1190,8 @@ exports.bulkCreateUsers = async (req, res) => {
           whatsapp,
           fullName,
           email,
-          // resetLink
-          resetToken
+          resetLink
+          // resetToken
         )
 
         created.push({
