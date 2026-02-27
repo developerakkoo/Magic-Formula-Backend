@@ -11,8 +11,8 @@ app.use(express.urlencoded({ extended: true }));
 // Now import routes
 const userRoutes = require("./modules/user/user.routes");
 
-// Mount routes
-app.use("/", userRoutes);
+// // Mount routes
+// app.use("/", userRoutes);
 
 
 // CORS Configuration
