@@ -1078,138 +1078,282 @@ exports.bulkAssignSubscription = async (req, res) => {
   }
 }
 
+// exports.bulkCreateUsers = async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({ message: 'Excel file required' })
+//     }
+
+//     const workbook = xlsx.read(req.file.buffer)
+//     const sheet = workbook.Sheets[workbook.SheetNames[0]]
+//     const rows = xlsx.utils.sheet_to_json(sheet)
+
+//     if (!rows.length) {
+//       return res.status(400).json({ message: 'Excel file is empty' })
+//     }
+
+//     const created = []
+//     const skipped = []
+//     const failed = []
+
+//     let rowNumber = 1
+
+//     for (const row of rows) {
+//       try {
+//         const fullName = row['Full Name']?.toString().trim()
+//         const email = row['Email'] || row['EMAIL'] || row['email']
+//         const formattedEmail = email?.toString().trim().toLowerCase()
+//         const whatsappRaw = row['WhatsApp'] || row['Whatsapp']
+//         let whatsapp = whatsappRaw?.toString().replace(/\D/g, '')
+//         const plainPassword = row['Password']?.toString()
+
+//         // Add India country code if missing
+//         if (whatsapp && !whatsapp.startsWith('91')) {
+//           whatsapp = '91' + whatsapp
+//         }
+
+//         // Required validation
+//         if (!fullName || !email || !whatsapp || !plainPassword) {
+//           failed.push({
+//             rowNumber,
+//             reason: 'Full Name, Email, WhatsApp and Password are required'
+//           })
+//           rowNumber++
+//           continue
+//         }
+
+//         if (plainPassword.length < 8) {
+//           failed.push({
+//             rowNumber,
+//             email,
+//             whatsapp,
+//             reason: 'Password must be at least 8 characters'
+//           })
+//           rowNumber++
+//           continue
+//         }
+
+//         // Check duplicate
+//         const existingUser = await User.findOne({
+//           $or: [{ email }, { whatsapp }]
+//         })
+
+//         if (existingUser) {
+//           skipped.push({
+//             rowNumber,
+//             email,
+//             whatsapp,
+//             reason: 'User already exists'
+//           })
+//           rowNumber++
+//           continue
+//         }
+
+//         // Hash password
+//         const hashedPassword = await bcrypt.hash(plainPassword, 10)
+
+//         const user = await User.create({
+//           fullName,
+//           email,
+//           whatsapp,
+//           password: hashedPassword,
+//           isVerified: true
+//         })
+
+//         // // ✅ Static Reset URL (as per your WATI template)
+//         // const resetLink = `https://api.moneycrafttrader.com/reset-password`
+//         // console.log('Sending WATI:', {
+//         //   fullName,
+//         //   email,
+//         //   resetLink
+//         // })
+
+//         // Generate secure token
+//         const resetToken = crypto.randomBytes(32).toString('hex')
+
+//         // Hash token before saving (security best practice)
+//         const hashedToken = crypto
+//           .createHash('sha256')
+//           .update(resetToken)
+//           .digest('hex')
+
+//         // Save token + expiry (15 minutes)
+//         user.resetPasswordToken = hashedToken
+//         user.resetPasswordExpire = Date.now() + 15 * 60 * 1000
+//         await user.save()
+
+//         // Dynamic reset URL (this goes to WATI button {{3}})
+//         const resetLink = `https://api.moneycrafttrader.com/reset-password/${resetToken}`
+
+//         // ✅ Send NEW WATI Template
+//         const whatsappResponse = await sendBulkUserResetMessage(
+//           whatsapp,
+//           fullName,
+//           email,
+//           resetLink
+//           // resetToken
+//         )
+
+//         created.push({
+//           rowNumber,
+//           userId: user._id,
+//           email,
+//           whatsapp,
+//           resetLink,
+//           whatsappSent: whatsappResponse.success
+//         })
+//       } catch (err) {
+//         failed.push({
+//           rowNumber,
+//           reason: err.message
+//         })
+//       }
+
+//       rowNumber++
+//     }
+
+//     return res.json({
+//       message: 'Bulk profile creation completed',
+//       summary: {
+//         totalRows: rows.length,
+//         created: created.length,
+//         skipped: skipped.length,
+//         failed: failed.length
+//       },
+//       created,
+//       skipped,
+//       failed
+//     })
+//   } catch (error) {
+//     console.error('Bulk user creation error:', error)
+//     return res.status(500).json({ message: error.message })
+//   }
+// }
+
+
+
 exports.bulkCreateUsers = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'Excel file required' })
+      return res.status(400).json({ message: 'Excel file required' });
     }
 
-    const workbook = xlsx.read(req.file.buffer)
-    const sheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rows = xlsx.utils.sheet_to_json(sheet)
+    const workbook = xlsx.read(req.file.buffer);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(sheet);
 
     if (!rows.length) {
-      return res.status(400).json({ message: 'Excel file is empty' })
+      return res.status(400).json({ message: 'Excel file is empty' });
     }
 
-    const created = []
-    const skipped = []
-    const failed = []
+    const created = [];
+    const skipped = [];
+    const failed = [];
 
-    let rowNumber = 1
+    let rowNumber = 1;
 
     for (const row of rows) {
       try {
-        const fullName = row['Full Name']?.toString().trim()
-        const email = row['Email'] || row['EMAIL'] || row['email']
-        const formattedEmail = email?.toString().trim().toLowerCase()
-        const whatsappRaw = row['WhatsApp'] || row['Whatsapp']
-        let whatsapp = whatsappRaw?.toString().replace(/\D/g, '')
-        const plainPassword = row['Password']?.toString()
+        const fullName = row['Full Name']?.toString().trim();
+        const emailRaw = row['Email'] || row['EMAIL'] || row['email'];
+        const formattedEmail = emailRaw?.toString().trim().toLowerCase();
+
+        const whatsappRaw = row['WhatsApp'] || row['Whatsapp'];
+        let whatsapp = whatsappRaw?.toString().replace(/\D/g, '');
+
+        const plainPassword = row['Password']?.toString();
 
         // Add India country code if missing
         if (whatsapp && !whatsapp.startsWith('91')) {
-          whatsapp = '91' + whatsapp
+          whatsapp = '91' + whatsapp;
         }
 
         // Required validation
-        if (!fullName || !email || !whatsapp || !plainPassword) {
+        if (!fullName || !formattedEmail || !whatsapp || !plainPassword) {
           failed.push({
             rowNumber,
             reason: 'Full Name, Email, WhatsApp and Password are required'
-          })
-          rowNumber++
-          continue
+          });
+          rowNumber++;
+          continue;
         }
 
         if (plainPassword.length < 8) {
           failed.push({
             rowNumber,
-            email,
+            email: formattedEmail,
             whatsapp,
             reason: 'Password must be at least 8 characters'
-          })
-          rowNumber++
-          continue
+          });
+          rowNumber++;
+          continue;
         }
 
-        // Check duplicate
+        // Check duplicate using formatted email
         const existingUser = await User.findOne({
-          $or: [{ email }, { whatsapp }]
-        })
+          $or: [{ email: formattedEmail }, { whatsapp }]
+        });
 
         if (existingUser) {
           skipped.push({
             rowNumber,
-            email,
+            email: formattedEmail,
             whatsapp,
             reason: 'User already exists'
-          })
-          rowNumber++
-          continue
+          });
+          rowNumber++;
+          continue;
         }
 
         // Hash password
-        const hashedPassword = await bcrypt.hash(plainPassword, 10)
+        const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-        const user = await User.create({
-          fullName,
-          email,
-          whatsapp,
-          password: hashedPassword,
-          isVerified: true
-        })
+        // Generate secure reset token
+        const resetToken = crypto.randomBytes(32).toString('hex');
 
-        // // ✅ Static Reset URL (as per your WATI template)
-        // const resetLink = `https://api.moneycrafttrader.com/reset-password`
-        // console.log('Sending WATI:', {
-        //   fullName,
-        //   email,
-        //   resetLink
-        // })
-
-        // Generate secure token
-        const resetToken = crypto.randomBytes(32).toString('hex')
-
-        // Hash token before saving (security best practice)
         const hashedToken = crypto
           .createHash('sha256')
           .update(resetToken)
-          .digest('hex')
+          .digest('hex');
 
-        // Save token + expiry (15 minutes)
-        user.resetPasswordToken = hashedToken
-        user.resetPasswordExpire = Date.now() + 15 * 60 * 1000
-        await user.save()
+        // Create user with reset token directly (single save)
+        const user = await User.create({
+          fullName,
+          email: formattedEmail,
+          whatsapp,
+          password: hashedPassword,
+          isVerified: true,
+          resetPasswordToken: hashedToken,
+          resetPasswordExpire: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+        });
 
-        // Dynamic reset URL (this goes to WATI button {{3}})
-        const resetLink = `https://api.moneycrafttrader.com/reset-password/${resetToken}`
+        const resetLink = `https://api.moneycrafttrader.com/reset-password/${resetToken}`;
 
-        // ✅ Send NEW WATI Template
+        // Send WATI template
         const whatsappResponse = await sendBulkUserResetMessage(
           whatsapp,
           fullName,
-          email,
+          formattedEmail,
           resetLink
-          // resetToken
-        )
+        );
 
         created.push({
           rowNumber,
           userId: user._id,
-          email,
+          email: formattedEmail,
           whatsapp,
           resetLink,
-          whatsappSent: whatsappResponse.success
-        })
+          whatsappSent: whatsappResponse?.success || false
+        });
+
       } catch (err) {
         failed.push({
           rowNumber,
           reason: err.message
-        })
+        });
       }
 
-      rowNumber++
+      rowNumber++;
     }
 
     return res.json({
@@ -1223,9 +1367,10 @@ exports.bulkCreateUsers = async (req, res) => {
       created,
       skipped,
       failed
-    })
+    });
+
   } catch (error) {
-    console.error('Bulk user creation error:', error)
-    return res.status(500).json({ message: error.message })
+    console.error('Bulk user creation error:', error);
+    return res.status(500).json({ message: error.message });
   }
-}
+};
