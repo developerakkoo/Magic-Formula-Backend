@@ -4,7 +4,7 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 // Redis disabled
 // const { getLiveUsersCount } = require('../../utils/liveUsers.redis');
-
+const crypto = require("crypto");
 exports.getProfilePhoto = async (req, res) => {
   const user = await User.findById(req.params.id);
 
