@@ -318,7 +318,8 @@ exports.getUserAnalytics = async (req, res) => {
 
 exports.showResetForm = async (req, res) => {
   const { token } = req.params;
-
+  console.log("Incoming token:", token)
+console.log("Matched user:", user?.email)
   const hashedToken = crypto
     .createHash("sha256")
     .update(token)
