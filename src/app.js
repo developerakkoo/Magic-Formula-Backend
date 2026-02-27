@@ -6,6 +6,14 @@ require('./cron/subscriptionReminder'); // (cron is loaded)
 require('./cron/subscriptionExpiry');
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Now import routes
+const userRoutes = require("./modules/user/user.routes");
+
+// Mount routes
+app.use("/", userRoutes);
+
 
 // CORS Configuration
 const corsOptions = {

@@ -288,7 +288,8 @@ exports.getUserAnalytics = async (req, res) => {
 exports.resetPasswordByEmail = async (req, res) => {
   try {
     const { email, newPassword } = req.body;
-
+    console.log("BODY:", req.body);
+    console.log("BODY FROM BROWSER:", req.body);
     if (!email || !newPassword) {
       return res.status(400).json({ message: "Email and new password required" });
     }
