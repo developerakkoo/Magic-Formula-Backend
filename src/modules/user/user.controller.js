@@ -317,43 +317,57 @@ exports.getUserAnalytics = async (req, res) => {
 // };
 
 exports.showResetForm = async (req, res) => {
-  const { token } = req.params;
-  console.log("Incoming token:", token)
-console.log("Matched user:", user?.email)
-  const hashedToken = crypto
-    .createHash("sha256")
-    .update(token)
-    .digest("hex");
+  try {
+    const { token } = req.params;
 
-  const user = await User.findOne({
-    resetPasswordToken: hashedToken,
-    resetPasswordExpire: { $gt: Date.now() }
-  });
+    if (!token) {
+      return res.status(400).send("Invalid reset link");
+    }
 
-  if (!user) {
-    return res.status(400).send("Reset link expired or invalid");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    console.log("Incoming token:", token);
+    console.log("Matched user:", user?.email || "No user found");
+
+    if (!user) {
+      return res.status(400).send("Reset link expired or invalid");
+    }
+
+    res.send(`
+      <html>
+        <body>
+          <h2>Reset Password</h2>
+          <form method="POST" action="/api/auth/reset-password/${token}">
+            <input type="email" value="${user.email}" readonly /><br/><br/>
+            <input type="password" name="newPassword" placeholder="New Password" required /><br/><br/>
+            <input type="password" name="confirmPassword" placeholder="Confirm Password" required /><br/><br/>
+            <button type="submit">Set Password</button>
+          </form>
+        </body>
+      </html>
+    `);
+
+  } catch (error) {
+    console.error("Show reset form error:", error);
+    res.status(500).send("Something went wrong");
   }
-
-  // Render HTML page with email readonly
-  res.send(`
-    <html>
-      <body>
-        <h2>Reset Password</h2>
-        <form method="POST" action="/api/auth/reset-password/${token}">
-          <input type="email" value="${user.email}" readonly /><br/><br/>
-          <input type="password" name="newPassword" placeholder="New Password" required /><br/><br/>
-          <input type="password" name="confirmPassword" placeholder="Confirm Password" required /><br/><br/>
-          <button type="submit">Set Password</button>
-        </form>
-      </body>
-    </html>
-  `);
 };
-
 exports.resetPasswordByToken = async (req, res) => {
   try {
     const { token } = req.params;
     const { newPassword, confirmPassword } = req.body;
+
+    if (!token) {
+      return res.status(400).send("Invalid request");
+    }
 
     if (!newPassword || !confirmPassword) {
       return res.status(400).send("All fields required");
@@ -381,17 +395,26 @@ exports.resetPasswordByToken = async (req, res) => {
       return res.status(400).send("Token invalid or expired");
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
+    // Hash new password
+    user.password = await bcrypt.hash(newPassword, 10);
 
-    // Clear reset fields
+    // Clear reset fields immediately (VERY IMPORTANT)
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
 
     await user.save();
 
-    res.send("Password reset successfully. You can now login.");
+    res.send(`
+      <html>
+        <body>
+          <h2>Password Reset Successful ✅</h2>
+          <p>You can now login with your new password.</p>
+        </body>
+      </html>
+    `);
+
   } catch (error) {
-    res.status(500).send(error.message);
+    console.error("Reset password error:", error);
+    res.status(500).send("Something went wrong");
   }
 };
