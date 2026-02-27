@@ -285,33 +285,112 @@ exports.getUserAnalytics = async (req, res) => {
   });
 };
 
-exports.resetPasswordByEmail = async (req, res) => {
+// exports.resetPasswordByEmail = async (req, res) => {
+//   try {
+//     const { email, newPassword } = req.body;
+//     console.log("BODY:", req.body);
+//     console.log("BODY FROM BROWSER:", req.body);
+//     if (!email || !newPassword) {
+//       return res.status(400).json({ message: "Email and new password required" });
+//     }
+
+//     if (newPassword.length < 8) {
+//       return res.status(400).json({ message: "Password must be at least 8 characters" });
+//     }
+
+//     const user = await User.findOne({ email });
+
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     const hashedPassword = await bcrypt.hash(newPassword, 10);
+//     user.password = hashedPassword;
+
+//     await user.save();
+
+//     return res.json({ message: "Password reset successfully" });
+
+//   } catch (error) {
+//     return res.status(500).json({ message: error.message });
+//   }
+// };
+
+exports.showResetForm = async (req, res) => {
+  const { token } = req.params;
+
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+
+  const user = await User.findOne({
+    resetPasswordToken: hashedToken,
+    resetPasswordExpire: { $gt: Date.now() }
+  });
+
+  if (!user) {
+    return res.status(400).send("Reset link expired or invalid");
+  }
+
+  // Render HTML page with email readonly
+  res.send(`
+    <html>
+      <body>
+        <h2>Reset Password</h2>
+        <form method="POST" action="/api/auth/reset-password/${token}">
+          <input type="email" value="${user.email}" readonly /><br/><br/>
+          <input type="password" name="newPassword" placeholder="New Password" required /><br/><br/>
+          <input type="password" name="confirmPassword" placeholder="Confirm Password" required /><br/><br/>
+          <button type="submit">Set Password</button>
+        </form>
+      </body>
+    </html>
+  `);
+};
+
+exports.resetPasswordByToken = async (req, res) => {
   try {
-    const { email, newPassword } = req.body;
-    console.log("BODY:", req.body);
-    console.log("BODY FROM BROWSER:", req.body);
-    if (!email || !newPassword) {
-      return res.status(400).json({ message: "Email and new password required" });
+    const { token } = req.params;
+    const { newPassword, confirmPassword } = req.body;
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).send("All fields required");
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).send("Passwords do not match");
     }
 
     if (newPassword.length < 8) {
-      return res.status(400).json({ message: "Password must be at least 8 characters" });
+      return res.status(400).send("Password must be at least 8 characters");
     }
 
-    const user = await User.findOne({ email });
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(400).send("Token invalid or expired");
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
 
+    // Clear reset fields
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
     await user.save();
 
-    return res.json({ message: "Password reset successfully" });
-
+    res.send("Password reset successfully. You can now login.");
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    res.status(500).send(error.message);
   }
 };

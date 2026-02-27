@@ -68,8 +68,10 @@ router.get('/reset-password', (req, res) => {
 });
 
 // Handle Reset Password
-router.post('/reset-password', userController.resetPasswordByEmail);
 
+router.get("/reset-password/:token", userController.showResetForm);
+// router.post('/reset-password', userController.resetPasswordByToken);
+router.post("/reset-password/:token", userController.resetPasswordByToken);
 /* ======================================================
    PROTECTED USER ROUTES
    ====================================================== */

@@ -1,4 +1,3 @@
-
 // const axios = require('axios');
 
 // const buildAuthHeader = () => {
@@ -101,33 +100,37 @@
 
 
 
-const axios = require('axios');
+const axios = require('axios')
 
 /* ======================================================
    Helper Utilities
 ====================================================== */
 
 const buildAuthHeader = () => {
-  const token = process.env.WATI_ACCESS_TOKEN;
+  const token = process.env.WATI_ACCESS_TOKEN
   if (!token) {
-    throw new Error('WATI_ACCESS_TOKEN is missing in environment variables');
+    throw new Error('WATI_ACCESS_TOKEN is missing in environment variables')
   }
-  return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-};
+  return token.startsWith('Bearer ') ? token : `Bearer ${token}`
+}
 
-const trimTrailingSlash = (value) =>
-  String(value || '').replace(/\/+$/, '');
+const trimTrailingSlash = value =>
+  String(value || '').replace(/\/+$/, '')
 
-const formatPhoneNumber = (phone) => {
-  let formatted = phone.toString().replace(/\D/g, '');
+const formatPhoneNumber = phone => {
+  if (!phone) throw new Error('Phone number is required')
+
+  let formatted = String(phone).replace(/\D/g, '')
+
   if (!formatted.startsWith('91')) {
-    formatted = '91' + formatted;
+    formatted = '91' + formatted
   }
-  return formatted;
-};
+
+  return formatted
+}
 
 /* ======================================================
-   Generic Template Sender (Supports Buttons)
+   Generic Template Sender
 ====================================================== */
 
 const sendWhatsAppTemplate = async (
@@ -137,38 +140,37 @@ const sendWhatsAppTemplate = async (
   buttonUrl = null
 ) => {
   try {
-    const authorizationHeader = buildAuthHeader();
-    const baseUrl = trimTrailingSlash(process.env.WATI_BASE_URL);
-    const formattedPhone = formatPhoneNumber(phone);
+    const authorizationHeader = buildAuthHeader()
+    const baseUrl = trimTrailingSlash(process.env.WATI_BASE_URL)
+    const formattedPhone = formatPhoneNumber(phone)
 
-    // Format body parameters
-    const formattedParams = parametersArray.map((value, index) => ({
+    // Safe parameter formatting (NO CRASH VERSION)
+    const formattedParams = (parametersArray || []).map((value, index) => ({
       name: `${index + 1}`,
-      value: value.toString()
-    }));
+      value: String(value ?? '')
+    }))
 
-    // Base payload
     const payload = {
       template_name: templateName,
       broadcast_name: templateName,
       parameters: formattedParams
-    };
+    }
 
-    // If dynamic URL button exists
+    // Optional dynamic URL button
     if (buttonUrl) {
       payload.buttons = [
         {
-          type: "button",
-          sub_type: "url",
-          index: "0",
+          type: 'button',
+          sub_type: 'url',
+          index: '0',
           parameters: [
             {
-              type: "text",
+              type: 'text',
               text: buttonUrl
             }
           ]
         }
-      ];
+      ]
     }
 
     const response = await axios.post(
@@ -177,51 +179,61 @@ const sendWhatsAppTemplate = async (
       {
         headers: {
           Authorization: authorizationHeader,
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json'
         }
       }
-    );
+    )
 
     return {
       success: true,
       data: response.data
-    };
-
+    }
   } catch (error) {
-    console.error("WATI SEND ERROR:", error.response?.data || error.message);
+    console.error(
+      'WATI SEND ERROR:',
+      error.response?.data || error.message
+    )
 
     return {
       success: false,
       error: error.response?.data || error.message
-    };
+    }
   }
-};
+}
 
 /* ======================================================
    Specific Template Wrappers
 ====================================================== */
 
-// 1️⃣ OTP Template
+// OTP Template
 const sendOTPMessage = async (phone, otpCode) => {
   return sendWhatsAppTemplate(
     phone,
-    "magic_formula_otp_v3",
+    'magic_formula_otp_v3',
     [otpCode]
-  );
-};
+  )
+}
 
-// 2️⃣ Bulk User Reset Template (NEW TEMPLATE)
-const sendBulkUserResetMessage = async (phone, fullName, email, resetLink) => {
+// ✅ FIXED Bulk User Reset Template
+// Template expects:
+// {{1}} = email
+// {{2}} = reset link
+const sendBulkUserResetMessage = async (
+  phone,
+  fullName,
+  maskedEmail,
+  resetLink
+) => {
   return sendWhatsAppTemplate(
     phone,
-    "usercreatebulk1", // <-- Your new template name
-    [fullName, email], // {{1}} = fullName, {{2}} = email
-    resetLink          // Dynamic URL button
-  );
-};
+    'bulk_create_uuser',   // ✅ exact template name
+    [fullName, maskedEmail], // body variables
+    resetLink            // dynamic button URL
+  )
+}
 
 module.exports = {
   sendWhatsAppTemplate,
   sendOTPMessage,
   sendBulkUserResetMessage
-};
+}
