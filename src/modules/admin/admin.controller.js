@@ -5,8 +5,8 @@ const bcrypt = require('bcryptjs')
 const xlsx = require('xlsx')
 const Plan = require('../subscription/plan.model')
 const Subscription = require('../subscription/subscription.model')
-const { sendBulkUserWelcomeMessage } = require('../../services/wati.service');
-
+// const { sendBulkUserWelcomeMessage } = require('../../services/wati.service');
+const { sendBulkUserResetMessage } = require('../../services/wati.service');
 // Redis disabled
 // const { getLiveUsersCount } = require('../../utils/liveUsers.redis');
 const UserSubscription = require('../subscription/subscription.model')
@@ -1075,7 +1075,6 @@ exports.bulkAssignSubscription = async (req, res) => {
   }
 }
 
-
 exports.bulkCreateUsers = async (req, res) => {
   try {
     if (!req.file) {
@@ -1146,6 +1145,7 @@ exports.bulkCreateUsers = async (req, res) => {
           continue;
         }
 
+        // Hash password
         const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
         const user = await User.create({
@@ -1156,10 +1156,15 @@ exports.bulkCreateUsers = async (req, res) => {
           isVerified: true
         });
 
-        // Send WhatsApp Welcome Message
-        const whatsappResponse = await sendBulkUserWelcomeMessage(
+        // ✅ Static Reset URL (as per your WATI template)
+        const resetLink = `https://api.moneycrafttrader.com/reset-password`;
+
+        // ✅ Send NEW WATI Template
+        const whatsappResponse = await sendBulkUserResetMessage(
           whatsapp,
-          fullName
+          fullName,
+          email,
+          resetLink
         );
 
         created.push({
@@ -1167,6 +1172,7 @@ exports.bulkCreateUsers = async (req, res) => {
           userId: user._id,
           email,
           whatsapp,
+          resetLink,
           whatsappSent: whatsappResponse.success
         });
 

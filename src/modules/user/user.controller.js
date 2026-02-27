@@ -284,3 +284,33 @@ exports.getUserAnalytics = async (req, res) => {
     },
   });
 };
+
+exports.resetPasswordByEmail = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: "Email and new password required" });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+
+    await user.save();
+
+    return res.json({ message: "Password reset successfully" });
+
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
