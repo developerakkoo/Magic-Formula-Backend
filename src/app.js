@@ -38,7 +38,7 @@ app.use(cors(corsOptions));
 
 // health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', version: '1.0.1' });
+  res.json({ status: 'OK', version: '1.0.2' });
 });
 
 // ROUTES
