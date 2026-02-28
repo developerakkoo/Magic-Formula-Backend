@@ -144,7 +144,6 @@ const sendWhatsAppTemplate = async (
     const baseUrl = trimTrailingSlash(process.env.WATI_BASE_URL)
     const formattedPhone = formatPhoneNumber(phone)
 
-    // Safe parameter formatting (NO CRASH VERSION)
     const formattedParams = (parametersArray || []).map((value, index) => ({
       name: `${index + 1}`,
       value: String(value ?? '')
@@ -152,11 +151,10 @@ const sendWhatsAppTemplate = async (
 
     const payload = {
       template_name: templateName,
-      broadcast_name: templateName,
+      broadcast_name: `bulk_${Date.now()}`,  // ✅ UNIQUE broadcast name
       parameters: formattedParams
     }
 
-    // Optional dynamic URL button
     if (buttonUrl) {
       payload.buttons = [
         {
@@ -172,7 +170,13 @@ const sendWhatsAppTemplate = async (
         }
       ]
     }
-
+console.log("====== WATI TEMPLATE DEBUG ======");
+console.log("Phone:", formattedPhone);
+console.log("Template:", templateName);
+console.log("Body Parameters:", formattedParams);
+console.log("Button URL:", buttonUrl);
+console.log("Final Payload:", JSON.stringify(payload, null, 2));
+console.log("==================================");
     const response = await axios.post(
       `${baseUrl}/api/v1/sendTemplateMessage?whatsappNumber=${formattedPhone}`,
       payload,
@@ -184,10 +188,8 @@ const sendWhatsAppTemplate = async (
       }
     )
 
-    return {
-      success: true,
-      data: response.data
-    }
+    return { success: true, data: response.data }
+
   } catch (error) {
     console.error(
       'WATI SEND ERROR:',
@@ -200,7 +202,6 @@ const sendWhatsAppTemplate = async (
     }
   }
 }
-
 /* ======================================================
    Specific Template Wrappers
 ====================================================== */
@@ -214,24 +215,20 @@ const sendOTPMessage = async (phone, otpCode) => {
   )
 }
 
-// ✅ FIXED Bulk User Reset Template
-// Template expects:
-// {{1}} = email
-// {{2}} = reset link
+
+
 const sendBulkUserResetMessage = async (
   phone,
   fullName,
-  maskedEmail,
-  resetLink
+  email
 ) => {
   return sendWhatsAppTemplate(
     phone,
-    'bulk_create_uuser',   // ✅ exact template name
-    [fullName, maskedEmail], // body variables
-    resetLink            // dynamic button URL
-  )
-}
-
+    'buli_create_user_v5',
+    [fullName, email],  // body {{1}}, {{2}}
+    email               // button {{1}}
+  );
+};
 module.exports = {
   sendWhatsAppTemplate,
   sendOTPMessage,

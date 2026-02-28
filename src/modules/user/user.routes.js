@@ -9,69 +9,13 @@ const notificationController = require('../notification/notification.controller'
    RESET PASSWORD ROUTES (PUBLIC)
    ====================================================== */
 
-// Show Reset Password Form
-router.get('/reset-password', (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Reset Password</title>
-      <style>
-        body {
-          font-family: Arial;
-          background: #f4f4f4;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
-        }
-        .card {
-          background: white;
-          padding: 30px;
-          border-radius: 10px;
-          width: 350px;
-          box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        input {
-          width: 100%;
-          padding: 10px;
-          margin: 10px 0;
-          border-radius: 5px;
-          border: 1px solid #ccc;
-        }
-        button {
-          width: 100%;
-          padding: 10px;
-          background: #007bff;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-        }
-        button:hover {
-          background: #0056b3;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="card">
-        <h2>Reset Password</h2>
-        <form method="POST" action="/reset-password">
-          <input type="email" name="email" placeholder="Enter Registered Email" required />
-          <input type="password" name="newPassword" placeholder="Enter New Password" required />
-          <button type="submit">Reset Password</button>
-        </form>
-      </div>
-    </body>
-    </html>
-  `);
-});
+
 
 // Handle Reset Password
 
-router.get("/reset-password/:token", userController.showResetForm);
+router.get("/reset-password", userController.showResetForm);
 // router.post('/reset-password', userController.resetPasswordByToken);
-router.post("/reset-password/:token", userController.resetPasswordByToken);
+router.post('/reset-password', userController.resetPasswordByEmail);
 /* ======================================================
    PROTECTED USER ROUTES
    ====================================================== */
@@ -97,6 +41,6 @@ router.delete('/notifications', authMiddleware, notificationController.clearAllU
    PUBLIC PROFILE PHOTO ROUTE (KEEP LAST!)
    ====================================================== */
 
-router.get('/:id', userController.getProfilePhoto);
+// router.get('/:id', userController.getProfilePhoto);
 
 module.exports = router;

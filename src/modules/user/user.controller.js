@@ -5,25 +5,25 @@ const bcrypt = require('bcryptjs');
 // Redis disabled
 // const { getLiveUsersCount } = require('../../utils/liveUsers.redis');
 const crypto = require("crypto");
-exports.getProfilePhoto = async (req, res) => {
-  const user = await User.findById(req.params.id);
+// exports.getProfilePhoto = async (req, res) => {
+//   const user = await User.findById(req.params.id);
 
-  if (!user || !user.profilePic) {
-    return res.status(404).json({ message: 'Profile photo not found' });
-  }
+//   if (!user || !user.profilePic) {
+//     return res.status(404).json({ message: 'Profile photo not found' });
+//   }
 
-  const filePath = path.join(
-    __dirname,
-    '../../uploads/profile',
-    user.profilePic
-  );
+//   const filePath = path.join(
+//     __dirname,
+//     '../../uploads/profile',
+//     user.profilePic
+//   );
 
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ message: 'File not found' });
-  }
+//   if (!fs.existsSync(filePath)) {
+//     return res.status(404).json({ message: 'File not found' });
+//   }
 
-  res.sendFile(filePath);
-};
+//   res.sendFile(filePath);
+// };
 
 exports.uploadProfilePic = async (req, res) => {
   try {
@@ -316,105 +316,228 @@ exports.getUserAnalytics = async (req, res) => {
 //   }
 // };
 
+// exports.showResetForm = async (req, res) => {
+//   try {
+//     const { token } = req.params;
+
+//     if (!token) {
+//       return res.status(400).send("Invalid reset link");
+//     }
+
+//     const hashedToken = crypto
+//       .createHash("sha256")
+//       .update(token)
+//       .digest("hex");
+
+//     const user = await User.findOne({
+//       resetPasswordToken: hashedToken,
+//       resetPasswordExpire: { $gt: Date.now() }
+//     });
+
+//     console.log("Incoming token:", token);
+//     console.log("Matched user:", user?.email || "No user found");
+
+//     if (!user) {
+//       return res.status(400).send("Reset link expired or invalid");
+//     }
+
+//     res.send(`
+//       <html>
+//         <body>
+//           <h2>Reset Password</h2>
+//           <form method="POST" action="/api/auth/reset-password/${token}">
+//             <input type="email" value="${user.email}" readonly /><br/><br/>
+//             <input type="password" name="newPassword" placeholder="New Password" required /><br/><br/>
+//             <input type="password" name="confirmPassword" placeholder="Confirm Password" required /><br/><br/>
+//             <button type="submit">Set Password</button>
+//           </form>
+//         </body>
+//       </html>
+//     `);
+
+//   } catch (error) {
+//     console.error("Show reset form error:", error);
+//     res.status(500).send("Something went wrong");
+//   }
+// };
+// exports.resetPasswordByToken = async (req, res) => {
+//   try {
+//     const { token } = req.params;
+//     const { newPassword, confirmPassword } = req.body;
+
+//     if (!token) {
+//       return res.status(400).send("Invalid request");
+//     }
+
+//     if (!newPassword || !confirmPassword) {
+//       return res.status(400).send("All fields required");
+//     }
+
+//     if (newPassword !== confirmPassword) {
+//       return res.status(400).send("Passwords do not match");
+//     }
+
+//     if (newPassword.length < 8) {
+//       return res.status(400).send("Password must be at least 8 characters");
+//     }
+
+//     const hashedToken = crypto
+//       .createHash("sha256")
+//       .update(token)
+//       .digest("hex");
+
+//     const user = await User.findOne({
+//       resetPasswordToken: hashedToken,
+//       resetPasswordExpire: { $gt: Date.now() }
+//     });
+
+//     if (!user) {
+//       return res.status(400).send("Token invalid or expired");
+//     }
+
+//     // Hash new password
+//     user.password = await bcrypt.hash(newPassword, 10);
+
+//     // Clear reset fields immediately (VERY IMPORTANT)
+//     user.resetPasswordToken = undefined;
+//     user.resetPasswordExpire = undefined;
+
+//     await user.save();
+
+//     res.send(`
+//       <html>
+//         <body>
+//           <h2>Password Reset Successful ✅</h2>
+//           <p>You can now login with your new password.</p>
+//         </body>
+//       </html>
+//     `);
+
+//   } catch (error) {
+//     console.error("Reset password error:", error);
+//     res.status(500).send("Something went wrong");
+//   }
+// };
+
+
+
 exports.showResetForm = async (req, res) => {
   try {
-    const { token } = req.params;
+    const { email } = req.query;
 
-    if (!token) {
-      return res.status(400).send("Invalid reset link");
+    if (!email) {
+      return res.status(400).send("<h2>Invalid Reset Link ❌</h2>");
     }
 
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
-
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpire: { $gt: Date.now() }
-    });
-
-    console.log("Incoming token:", token);
-    console.log("Matched user:", user?.email || "No user found");
+    const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(400).send("Reset link expired or invalid");
+      return res.status(400).send("<h2>User not found ❌</h2>");
     }
 
     res.send(`
-      <html>
-        <body>
-          <h2>Reset Password</h2>
-          <form method="POST" action="/api/auth/reset-password/${token}">
-            <input type="email" value="${user.email}" readonly /><br/><br/>
-            <input type="password" name="newPassword" placeholder="New Password" required /><br/><br/>
-            <input type="password" name="confirmPassword" placeholder="Confirm Password" required /><br/><br/>
-            <button type="submit">Set Password</button>
-          </form>
-        </body>
-      </html>
+    <html>
+    <head>
+    <style>
+    body {
+      font-family: Arial;
+      background: #f4f6f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      width: 400px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    </style>
+    </head>
+    <body>
+    <div class="card">
+      <h2>Reset Password</h2>
+
+      <form method="POST" action="/reset-password">
+
+        <input type="hidden" name="email" value="${user.email}" />
+
+        <input type="email" value="${user.email}" readonly />
+
+        <input type="password" name="newPassword" placeholder="Enter New Password" required />
+
+        <input type="password" name="confirmPassword" placeholder="Confirm New Password" required />
+
+        <button type="submit">Reset Password</button>
+      </form>
+    </div>
+    </body>
+    </html>
     `);
 
   } catch (error) {
-    console.error("Show reset form error:", error);
+    console.error(error);
     res.status(500).send("Something went wrong");
   }
 };
-exports.resetPasswordByToken = async (req, res) => {
-  try {
-    const { token } = req.params;
-    const { newPassword, confirmPassword } = req.body;
 
-    if (!token) {
-      return res.status(400).send("Invalid request");
+
+exports.resetPasswordByEmail = async (req, res) => {
+  try {
+    const { email, newPassword, confirmPassword } = req.body;
+
+    if (!email) {
+      return res.status(400).send("<h2>Email missing ❌</h2>");
     }
 
     if (!newPassword || !confirmPassword) {
-      return res.status(400).send("All fields required");
+      return res.status(400).send("<h2>All fields required ❌</h2>");
     }
 
     if (newPassword !== confirmPassword) {
-      return res.status(400).send("Passwords do not match");
+      return res.status(400).send("<h2>Passwords do not match ❌</h2>");
     }
 
     if (newPassword.length < 8) {
-      return res.status(400).send("Password must be at least 8 characters");
+      return res.status(400).send("<h2>Password must be at least 8 characters ❌</h2>");
     }
 
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
-
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpire: { $gt: Date.now() }
-    });
+    const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(400).send("Token invalid or expired");
+      return res.status(400).send("<h2>User not found ❌</h2>");
     }
 
-    // Hash new password
     user.password = await bcrypt.hash(newPassword, 10);
-
-    // Clear reset fields immediately (VERY IMPORTANT)
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-
     await user.save();
 
     res.send(`
-      <html>
-        <body>
-          <h2>Password Reset Successful ✅</h2>
-          <p>You can now login with your new password.</p>
-        </body>
-      </html>
+      <div style="font-family:Arial; text-align:center; margin-top:100px;">
+        <h2>Password Reset Successful ✅</h2>
+        <p>You can now login with your new password.</p>
+      </div>
     `);
 
   } catch (error) {
-    console.error("Reset password error:", error);
+    console.error(error);
     res.status(500).send("Something went wrong");
   }
 };

@@ -21,3 +21,4 @@ WATI_WHATSAPP_NUMBER=91XXXXXXXXXX
 CORS_ORIGIN_DEV=http://localhost:8100
 CORS_ORIGIN_PROD=https://your-production-domain.com
 NODE_ENV=development
+BASE_URL=http://localhost:5000
