@@ -857,6 +857,75 @@ exports.verifyPenaltyPayment = async (req, res) => {
 }
 
 /**
+ * COMPLETE REGISTRATION (after OTP verification)
+ * Updates user with fullName, email, password. Only allowed when user has no password set.
+ * Requires authentication middleware
+ */
+exports.completeRegistration = async (req, res) => {
+  try {
+    const user = req.user
+    const { fullName, email, password } = req.body
+
+    if (!fullName || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name, email and password are required'
+      })
+    }
+
+    if (user.password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Registration already completed for this account'
+      })
+    }
+
+    const existingEmail = await User.findOne({
+      email: email.toLowerCase(),
+      _id: { $ne: user._id }
+    })
+    if (existingEmail) {
+      return res.status(409).json({
+        success: false,
+        message: 'Email already in use'
+      })
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+    user.fullName = fullName
+    user.email = email.toLowerCase()
+    user.password = hashedPassword
+    await user.save()
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`
+    const userResponse = {
+      _id: user._id,
+      mobile: user.mobile,
+      fullName: user.fullName,
+      email: user.email,
+      whatsapp: user.whatsapp,
+      firebaseToken: user.firebaseToken,
+      isBlocked: user.isBlocked,
+      activePlan: user.activePlan,
+      planExpiry: user.planExpiry,
+      profilePic: user.profilePic ? `${baseUrl}/api/users/${user._id}` : null
+    }
+
+    res.json({
+      success: true,
+      message: 'Registration completed successfully',
+      data: userResponse
+    })
+  } catch (error) {
+    console.error('Complete registration error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    })
+  }
+}
+
+/**
  * LOGOUT
  * Requires authentication middleware
  */
