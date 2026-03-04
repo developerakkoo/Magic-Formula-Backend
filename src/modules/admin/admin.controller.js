@@ -821,10 +821,10 @@ exports.exportUsersExcel = async (req, res) => {
       { header: 'Full Name', key: 'fullName', width: 25 },
       { header: 'Email', key: 'email', width: 30 },
       { header: 'WhatsApp', key: 'whatsapp', width: 15 },
+      { header: 'Mobile', key: 'mobile', width: 15 },
+      { header: 'Password', key: 'password', width: 20 },
       { header: 'Blocked', key: 'isBlocked', width: 10 },
       { header: 'Created At', key: 'createdAt', width: 20 },
-
-      // 🔥 Bulk subscription columns
       { header: 'Plan Code', key: 'planCode', width: 15 },
       { header: 'Duration', key: 'duration', width: 12 }
     ]
@@ -832,11 +832,14 @@ exports.exportUsersExcel = async (req, res) => {
     users.forEach(user => {
       const activeSub = subscriptionByUserId.get(String(user._id))
       const plan = activeSub?.planId
+      const mobileForSubscription = user.mobile || user.whatsapp || ''
 
       worksheet.addRow({
         fullName: user.fullName,
         email: user.email,
         whatsapp: user.whatsapp,
+        mobile: mobileForSubscription,
+        password: '',
         isBlocked: user.isBlocked ? 'Yes' : 'No',
         createdAt: user.createdAt,
         planCode: plan?.code || '',
@@ -952,7 +955,8 @@ exports.bulkAssignSubscription = async (req, res) => {
         /* ===== NORMALIZE USER IDENTIFIER ===== */
         const email = row.Email ? String(row.Email).trim().toLowerCase() : null
 
-        const mobile = row.Mobile ? String(row.Mobile).replace(/\D/g, '') : null
+        const mobileRaw = row.Mobile || row.WhatsApp || row.Whatsapp
+        const mobile = mobileRaw ? String(mobileRaw).replace(/\D/g, '') : null
 
         if (!email && !mobile) {
           failed.push({
