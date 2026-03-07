@@ -224,7 +224,7 @@ const sendBulkUserResetMessage = async (
 ) => {
   return sendWhatsAppTemplate(
     phone,
-    'bulk_create_user_v6',
+    'bulk',
     [fullName, email],  // body {{1}}, {{2}}
     email               // button {{1}}
   );
