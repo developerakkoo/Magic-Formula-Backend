@@ -262,9 +262,7 @@ exports.updatePlan = async (req, res) => {
 };
 
 /**
- * DELETE PLAN (hard delete + cascade)
- * Removes all UserSubscription rows for this plan, clears user.activePlan when it
- * pointed at one of those subscriptions, then deletes the Plan document.
+ * DELETE PLAN (SOFT DELETE)
  */
 exports.deletePlan = async (req, res) => {
   try {
@@ -285,23 +283,16 @@ exports.deletePlan = async (req, res) => {
       });
     }
 
-    const subs = await UserSubscription.find({ planId }).select('_id');
-    const subIds = subs.map((s) => s._id);
-
-    if (subIds.length) {
-      await User.updateMany(
-        { activePlan: { $in: subIds } },
-        { $set: { activePlan: null, planExpiry: null } }
-      );
-    }
-
-    await UserSubscription.deleteMany({ planId });
-    await Plan.findByIdAndDelete(planId);
+    // Use updateOne to avoid validation issues with required fields
+    // This is safer for soft deletes as it doesn't trigger full document validation
+    await Plan.updateOne(
+      { _id: planId },
+      { $set: { isActive: false } }
+    );
 
     res.json({
       success: true,
-      message: 'Plan and related subscriptions removed',
-      deletedSubscriptions: subIds.length
+      message: 'Plan disabled successfully'
     });
   } catch (error) {
     console.error('Delete plan error:', error);
