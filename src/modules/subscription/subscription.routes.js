@@ -53,8 +53,8 @@ router.post('/verify-payment', authMiddleware, subscriptionController.verifyPaym
 // Get my subscription
 router.get('/my-subscription', authMiddleware, subscriptionController.getMySubscription);
 
-router.post('/run-expiry', async (req, res) => {
-  await subscriptionExpiryJob.runNow(); // we’ll add this helper
+router.post('/run-expiry', adminAuth, async (req, res) => {
+  await subscriptionExpiryJob.runNow();
   res.json({ success: true });
 });
 

@@ -5,13 +5,7 @@ const Notification = require('../modules/notification/notification.model');
 const UserNotification = require('../modules/notification/userNotification.model');
 const { sendFirebasePush } = require('../utils/firebasePush.utils');
 
-/**
- * Runs every day at 1:00 AM
- * Expires subscriptions & sends notification
- */
-cron.schedule('0 1 * * *', async () => {
-  console.log('❌ Running subscription expiry job');
-
+async function runExpiryJob () {
   const now = new Date();
 
   const expiredSubs = await UserSubscription
@@ -26,12 +20,10 @@ cron.schedule('0 1 * * *', async () => {
     const user = sub.userId;
     const plan = sub.planId;
 
-    // deactivate subscription
     sub.isActive = false;
     sub.expiredNotificationSent = true;
     await sub.save();
 
-    // remove active plan from user
     await User.findByIdAndUpdate(user._id, {
       activePlan: null
     });
@@ -58,4 +50,15 @@ cron.schedule('0 1 * * *', async () => {
       });
     }
   }
+}
+
+cron.schedule('0 1 * * *', async () => {
+  console.log('❌ Running subscription expiry job');
+  try {
+    await runExpiryJob();
+  } catch (err) {
+    console.error('subscriptionExpiry job error:', err);
+  }
 });
+
+module.exports = { runNow: runExpiryJob };

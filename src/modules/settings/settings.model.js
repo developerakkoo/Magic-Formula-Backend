@@ -51,6 +51,12 @@ const settingsSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
+
+    /** When false, starter plan is hidden from user app and self-serve purchase; admin can still assign. */
+    starterOfferVisibleToUsers: {
+      type: Boolean,
+      default: true
+    },
     
     // Other settings can be added here
     metadata: {

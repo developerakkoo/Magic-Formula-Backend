@@ -6,6 +6,59 @@ const crypto = require('crypto');
 const Notification = require('../notification/notification.model');
 const UserNotification = require('../notification/userNotification.model');
 const { sendFirebasePush } = require('../../utils/firebasePush.utils');
+const {
+  planDocIsStarter,
+  shouldListStarterPlanForUser,
+  assertUserMayPurchaseStarter,
+  assertNoConflictingActiveStarterPlan
+} = require('./starterPlan.utils');
+const { assertNoPlanCodeConflict } = require('./planCode.utils');
+
+function parseNonNegativePrice (value, fieldLabel) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    const err = new Error(`${fieldLabel} must be a number >= 0`);
+    err.statusCode = 400;
+    throw err;
+  }
+  return n;
+}
+
+function resolveActualAndDiscountedPrices (actualPriceInput, discountedPriceInput) {
+  const actualPrice = parseNonNegativePrice(actualPriceInput, 'actualPrice');
+  let discountedPrice;
+  if (
+    discountedPriceInput === undefined ||
+    discountedPriceInput === null ||
+    discountedPriceInput === ''
+  ) {
+    discountedPrice = actualPrice;
+  } else {
+    discountedPrice = parseNonNegativePrice(discountedPriceInput, 'discountedPrice');
+  }
+  if (discountedPrice > actualPrice) {
+    const err = new Error('discountedPrice must not be greater than actualPrice');
+    err.statusCode = 400;
+    throw err;
+  }
+  return { actualPrice, discountedPrice };
+}
+
+function normalizePlanDocumentPricing (plan) {
+  const actualPrice = parseNonNegativePrice(plan.actualPrice, 'actualPrice');
+  plan.actualPrice = actualPrice;
+  let disc = plan.discountedPrice;
+  if (disc === undefined || disc === null || disc === '') {
+    plan.discountedPrice = actualPrice;
+  } else {
+    plan.discountedPrice = parseNonNegativePrice(disc, 'discountedPrice');
+  }
+  if (plan.discountedPrice > actualPrice) {
+    const err = new Error('discountedPrice must not be greater than actualPrice');
+    err.statusCode = 400;
+    throw err;
+  }
+}
 
 
 /* ================= ADMIN ================= */
@@ -26,14 +79,29 @@ exports.createPlan = async (req, res) => {
       offerText,
       offerStartAt,
       offerEndAt,
-      isActive
+      isActive,
+      isStarterOffer
     } = req.body;
 
     /* ===== BASIC VALIDATIONS ===== */
-    if (!title || !code || !durationInMonths || !actualPrice || !discountedPrice) {
+    if (!title || !code || !durationInMonths || actualPrice === undefined || actualPrice === null || actualPrice === '') {
       return res.status(400).json({
-        message: 'title, code, durationInMonths, actualPrice, discountedPrice are required'
+        message: 'title, code, durationInMonths, and actualPrice are required'
       });
+    }
+
+    let resolvedActual;
+    let resolvedDiscounted;
+    try {
+      ({ actualPrice: resolvedActual, discountedPrice: resolvedDiscounted } = resolveActualAndDiscountedPrices(
+        actualPrice,
+        discountedPrice
+      ));
+    } catch (e) {
+      if (e.statusCode) {
+        return res.status(e.statusCode).json({ message: e.message });
+      }
+      throw e;
     }
 
     if (description && description.length > 6) {
@@ -44,27 +112,43 @@ exports.createPlan = async (req, res) => {
       return res.status(400).json({ message: 'Offer text max 30 characters' });
     }
 
-    /* ===== DUPLICATE CODE CHECK ===== */
-    const existingPlan = await Plan.findOne({ code: code.toUpperCase() });
-    if (existingPlan) {
-      return res.status(409).json({
-        message: `Plan with code '${code}' already exists`
-      });
+    const codeUpper = String(code).trim().toUpperCase();
+    try {
+      await assertNoPlanCodeConflict(codeUpper, null);
+    } catch (e) {
+      if (e.statusCode) {
+        return res.status(e.statusCode).json({ message: e.message });
+      }
+      throw e;
+    }
+
+    const effectiveActive = isActive === undefined ? true : Boolean(isActive);
+    const willBeActiveStarter = Boolean(isStarterOffer) && effectiveActive;
+    if (willBeActiveStarter) {
+      try {
+        await assertNoConflictingActiveStarterPlan();
+      } catch (e) {
+        if (e.statusCode) {
+          return res.status(e.statusCode).json({ message: e.message });
+        }
+        throw e;
+      }
     }
 
     /* ===== CREATE PLAN ===== */
     const plan = await Plan.create({
       title,
-      code: code.toUpperCase(),   // ✅ IMPORTANT
+      code: codeUpper,
       description,
       durationInMonths,
-      actualPrice,
-      discountedPrice,
+      actualPrice: resolvedActual,
+      discountedPrice: resolvedDiscounted,
       showOfferBadge,
       offerText,
       offerStartAt,
       offerEndAt,
-      isActive: isActive ?? true
+      isActive: isActive ?? true,
+      isStarterOffer: Boolean(isStarterOffer)
     });
 
     return res.status(201).json({
@@ -75,8 +159,8 @@ exports.createPlan = async (req, res) => {
 
   } catch (error) {
     console.error('Create plan error:', error);
-
-    return res.status(400).json({
+    const status = error.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 400;
+    return res.status(status).json({
       message: error.message,
       error: error.name
     });
@@ -114,8 +198,51 @@ exports.updatePlan = async (req, res) => {
       });
     }
 
+    const body = req.body;
+    const mergedIsStarter =
+      body.isStarterOffer !== undefined ? Boolean(body.isStarterOffer) : !!plan.isStarterOffer;
+    const mergedActive =
+      body.isActive !== undefined ? Boolean(body.isActive) : !!plan.isActive;
+    if (mergedIsStarter && mergedActive) {
+      try {
+        await assertNoConflictingActiveStarterPlan(plan._id);
+      } catch (e) {
+        if (e.statusCode) {
+          return res.status(e.statusCode).json({ message: e.message });
+        }
+        throw e;
+      }
+    }
+
+    const mergedCode =
+      body.code !== undefined && body.code !== null && String(body.code).trim() !== ''
+        ? String(body.code).trim().toUpperCase()
+        : plan.code;
+
+    try {
+      await assertNoPlanCodeConflict(mergedCode, plan._id);
+    } catch (e) {
+      if (e.statusCode) {
+        return res.status(e.statusCode).json({ message: e.message });
+      }
+      throw e;
+    }
+
     // Update plan fields
-    Object.assign(plan, req.body);
+    Object.assign(plan, body);
+    if (body.code !== undefined && body.code !== null && String(body.code).trim() !== '') {
+      plan.code = mergedCode;
+    }
+
+    try {
+      normalizePlanDocumentPricing(plan);
+    } catch (e) {
+      if (e.statusCode) {
+        return res.status(e.statusCode).json({ message: e.message });
+      }
+      throw e;
+    }
+
     await plan.save();
 
     res.json({
@@ -190,6 +317,15 @@ exports.assignPlanToUser = async (req, res) => {
 
     if (!user || !plan || !plan.isActive) {
       return res.status(400).json({ message: 'Invalid user or plan' });
+    }
+
+    try {
+      await assertUserMayPurchaseStarter(userId, plan, { forSelfServePurchase: false });
+    } catch (e) {
+      if (e.statusCode) {
+        return res.status(e.statusCode).json({ message: e.message });
+      }
+      throw e;
     }
 
     /* 1️⃣ Deactivate previous subscriptions */
@@ -296,12 +432,19 @@ exports.subscriptionAnalytics = async (req, res) => {
  * GET ACTIVE PLANS (USER)
  */
 exports.getActivePlans = async (req, res) => {
-  // Show all active plans regardless of offer status
   const plans = await Plan.find({
     isActive: true
-  }).sort({ createdAt: -1 });
+  })
+    .sort({ createdAt: -1 })
+    .lean();
 
-  res.json({ success: true, data: plans });
+  const listStarter = await shouldListStarterPlanForUser(req.user);
+  const filtered = plans.filter((p) => {
+    if (planDocIsStarter(p)) return listStarter;
+    return true;
+  });
+
+  res.json({ success: true, data: filtered });
 };
 
 /**
@@ -320,6 +463,7 @@ exports.getMySubscription = async (req, res) => {
     });
   }
 
+  const plan = subscription.planId;
   const daysLeft = Math.ceil(
     (subscription.expiryDate - new Date()) / (1000 * 60 * 60 * 24)
   );
@@ -327,7 +471,9 @@ exports.getMySubscription = async (req, res) => {
   res.json({
     success: true,
     data: {
-      planName: subscription.planId.title,
+      planName: plan.title,
+      planCode: plan.code,
+      isStarterOffer: planDocIsStarter(plan),
       expiryDate: subscription.expiryDate,
       daysLeft
     }
@@ -348,6 +494,15 @@ exports.subscribe = async (req, res) => {
     const plan = await Plan.findOne({ _id: planId, isActive: true });
     if (!plan) {
       return res.status(400).json({ message: 'Invalid or inactive plan' });
+    }
+
+    try {
+      await assertUserMayPurchaseStarter(userId, plan);
+    } catch (e) {
+      if (e.statusCode) {
+        return res.status(e.statusCode).json({ message: e.message });
+      }
+      throw e;
     }
 
     // Amount in paise
@@ -423,6 +578,15 @@ exports.verifyPayment = async (req, res) => {
     const plan = await Plan.findById(planId);
     if (!plan || !plan.isActive) {
       return res.status(400).json({ message: 'Invalid plan' });
+    }
+
+    try {
+      await assertUserMayPurchaseStarter(userId, plan);
+    } catch (e) {
+      if (e.statusCode) {
+        return res.status(e.statusCode).json({ message: e.message });
+      }
+      throw e;
     }
 
     /* 3️⃣ Deactivate previous subscriptions */

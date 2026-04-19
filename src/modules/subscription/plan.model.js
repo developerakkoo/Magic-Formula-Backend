@@ -75,6 +75,12 @@ const planSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true
+    },
+
+    /** One-time ₹1 intro plan; filtered per-user after first purchase */
+    isStarterOffer: {
+      type: Boolean,
+      default: false
     }
   },
   {
