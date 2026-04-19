@@ -1,6 +1,5 @@
-# Environment variables
+# Environment variables (.env is tracked; use .env.local for machine-only overrides)
 env
-.env
 .env.local
 .env.*.local
 
