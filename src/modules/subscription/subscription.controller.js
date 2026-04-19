@@ -262,42 +262,51 @@ exports.updatePlan = async (req, res) => {
 };
 
 /**
- * DELETE PLAN (SOFT DELETE)
+ * DELETE PLAN (hard delete + cascade)
+ * Removes all UserSubscription rows for this plan, clears user.activePlan when it
+ * pointed at one of those subscriptions, then deletes the Plan document.
  */
 exports.deletePlan = async (req, res) => {
   try {
     const { planId } = req.params;
-    
+
     if (!planId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: 'Plan ID is required' 
+        message: 'Plan ID is required'
       });
     }
 
     const plan = await Plan.findById(planId);
     if (!plan) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Plan not found' 
+        message: 'Plan not found'
       });
     }
 
-    // Use updateOne to avoid validation issues with required fields
-    // This is safer for soft deletes as it doesn't trigger full document validation
-    await Plan.updateOne(
-      { _id: planId },
-      { $set: { isActive: false } }
-    );
+    const subs = await UserSubscription.find({ planId }).select('_id');
+    const subIds = subs.map((s) => s._id);
 
-    res.json({ 
-      success: true, 
-      message: 'Plan disabled successfully' 
+    if (subIds.length) {
+      await User.updateMany(
+        { activePlan: { $in: subIds } },
+        { $set: { activePlan: null, planExpiry: null } }
+      );
+    }
+
+    await UserSubscription.deleteMany({ planId });
+    await Plan.findByIdAndDelete(planId);
+
+    res.json({
+      success: true,
+      message: 'Plan and related subscriptions removed',
+      deletedSubscriptions: subIds.length
     });
   } catch (error) {
     console.error('Delete plan error:', error);
     console.error('Error stack:', error.stack);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: error.message || 'Failed to delete plan',
       error: error.name
