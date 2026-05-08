@@ -256,11 +256,13 @@ exports.getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .populate('activePlan')
-      .select('-password -__v')
+      .select('-__v')
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' })
     }
+
+    const passwordSet = Boolean(user.password && String(user.password).length > 0)
 
     // Get subscription expiry if activePlan exists
     let planExpiry = null
@@ -274,11 +276,15 @@ exports.getUserById = async (req, res) => {
       }
     }
 
+    const userObj = user.toObject()
+    delete userObj.password
+
     res.json({
       success: true,
       data: {
-        ...user.toObject(),
-        planExpiry
+        ...userObj,
+        planExpiry,
+        passwordSet
       }
     })
   } catch (error) {
@@ -400,7 +406,8 @@ exports.createUser = async (req, res) => {
  */
 exports.updateUser = async (req, res) => {
   try {
-    const { fullName, email, whatsapp, profilePic, firebaseToken } = req.body
+    const { fullName, email, whatsapp, profilePic, firebaseToken, password } =
+      req.body
 
     const user = await User.findById(req.params.id)
     if (!user) {
@@ -409,19 +416,78 @@ exports.updateUser = async (req, res) => {
 
     // Update only provided fields
     if (fullName !== undefined) user.fullName = fullName
-    if (email !== undefined) user.email = email
-    if (whatsapp !== undefined) user.whatsapp = whatsapp
+
+    if (email !== undefined) {
+      const formattedEmail = String(email).trim().toLowerCase()
+      if (!formattedEmail) {
+        return res.status(400).json({ message: 'Email cannot be empty' })
+      }
+      const existingEmail = await User.findOne({
+        email: formattedEmail,
+        _id: { $ne: user._id }
+      })
+      if (existingEmail) {
+        return res
+          .status(409)
+          .json({ message: 'User with this email already exists' })
+      }
+      user.email = formattedEmail
+    }
+
+    if (whatsapp !== undefined) {
+      const normalized =
+        whatsapp === null || String(whatsapp).trim() === ''
+          ? undefined
+          : normalizeWhatsappDigits(whatsapp)
+      if (normalized) {
+        const existingWa = await User.findOne({
+          whatsapp: normalized,
+          _id: { $ne: user._id }
+        })
+        if (existingWa) {
+          return res.status(409).json({
+            message: 'User with this WhatsApp number already exists'
+          })
+        }
+      }
+      user.whatsapp = normalized
+    }
+
     if (profilePic !== undefined) user.profilePic = profilePic
     if (firebaseToken !== undefined) user.firebaseToken = firebaseToken
 
+    if (password !== undefined && password !== null) {
+      if (typeof password !== 'string' || !password.trim()) {
+        return res
+          .status(400)
+          .json({ message: 'Password cannot be empty when provided' })
+      }
+      const trimmedPassword = password.trim()
+      if (trimmedPassword.length < 8) {
+        return res
+          .status(400)
+          .json({ message: 'Password must be at least 8 characters long' })
+      }
+      if (trimmedPassword.length > 128) {
+        return res
+          .status(400)
+          .json({ message: 'Password must be at most 128 characters long' })
+      }
+      user.password = await bcrypt.hash(trimmedPassword, 10)
+    }
+
     await user.save()
 
+    const passwordSet = Boolean(user.password && String(user.password).length > 0)
     const safe = await User.findById(user._id).select('-password -__v').lean()
 
     res.json({
       success: true,
       message: 'User updated successfully',
-      data: safe
+      data: {
+        ...safe,
+        passwordSet
+      }
     })
   } catch (error) {
     console.error('Update user error:', error)

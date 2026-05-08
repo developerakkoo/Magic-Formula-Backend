@@ -567,6 +567,11 @@ exports.login = async (req, res) => {
         .json({ message: 'Email or WhatsApp number and password are required' })
     }
 
+    const passwordInput = String(password).trim()
+    if (!passwordInput) {
+      return res.status(400).json({ message: 'Password cannot be empty' })
+    }
+
     // Find user by normalized email (matches admin/bulk storage) or normalized WhatsApp
     const user = await User.findOne(
       emailNormalized
@@ -575,19 +580,22 @@ exports.login = async (req, res) => {
     )
 
     if (!user) {
+      console.warn('[auth/login] loginFailReason=no_user')
       return res.status(401).json({ message: 'Invalid credentials' })
     }
 
     // 🔐 Verify password
     if (!user.password) {
+      console.warn('[auth/login] loginFailReason=no_password_hash')
       return res.status(401).json({
         message:
           'This account does not have a password set. Please contact admin.'
       })
     }
 
-    const isPasswordValid = await user.comparePassword(password)
+    const isPasswordValid = await user.comparePassword(passwordInput)
     if (!isPasswordValid) {
+      console.warn('[auth/login] loginFailReason=password_mismatch')
       return res.status(401).json({ message: 'Invalid credentials' })
     }
 

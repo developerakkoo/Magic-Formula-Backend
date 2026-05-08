@@ -29,6 +29,29 @@
 
 **Responses:** `201` returns `{ success, message, data }` where `data` is the created user document **without** the `password` field. `400` validation errors; `409` if mobile, email, or WhatsApp already exists.
 
+### 2.1 Get user by ID
+
+- **Route:** `GET /api/admin/users/:id`
+- **Auth:** Admin Bearer token
+- **Response `data`:** Full user profile (no `password` field). Includes **`passwordSet`** (`boolean`): whether a bcrypt password exists. The current plaintext password cannot be returned.
+
+### 2.2 Update user
+
+- **Route:** `PATCH /api/admin/users/:id`
+- **Auth:** Admin Bearer token
+- **Content-Type:** `application/json`
+
+**Body (JSON)** — all fields optional except when updating:
+
+| Field | Notes |
+|-------|--------|
+| `fullName`, `profilePic`, `firebaseToken` | Standard updates |
+| `email` | Trimmed and lowercased; must remain unique |
+| `whatsapp` | Normalized like bulk create; empty clears value (subject to schema) |
+| `password` | If provided: **8–128 characters**; replaces existing hash. Omit to leave password unchanged.
+
+**Response:** `{ success, message, data }` with **`passwordSet`** on `data`; never includes `password`.
+
 ---
 
 ## 3. Bulk create users (with WATI)
@@ -95,6 +118,8 @@
 |----------------------------|--------|--------|-------------------|------------------|
 | `/api/admin/auth/login`    | POST   | None   | JSON `email`, `password` | No  |
 | `/api/admin/users`         | POST   | Bearer | JSON user + `password` (single create) | No  |
+| `/api/admin/users/:id`     | GET    | Bearer | JSON user + `passwordSet` | No  |
+| `/api/admin/users/:id`     | PATCH  | Bearer | JSON partial update; optional `password` | No  |
 | `/api/admin/bulk-create-users` | POST | Bearer | multipart `file` (Excel) | Yes – **buli_create_user_v5** |
 | `/api/admin/bulk-subscription` | POST | Bearer | multipart `file` (Excel) | No  |
 
