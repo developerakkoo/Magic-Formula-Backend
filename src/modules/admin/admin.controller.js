@@ -12,18 +12,7 @@ const { sendBulkUserResetMessage } = require('../../services/wati.service')
 const UserSubscription = require('../subscription/subscription.model')
 const ExcelJS = require('exceljs')
 const crypto = require('crypto')
-
-/** Normalize WhatsApp to digits with India country code when missing (aligned with bulk create). */
-function normalizeWhatsappInput (whatsappRaw) {
-  if (whatsappRaw === undefined || whatsappRaw === null) return undefined
-  const s = String(whatsappRaw).trim()
-  if (!s) return undefined
-  let digits = s.replace(/\D/g, '')
-  if (digits && !digits.startsWith('91')) {
-    digits = '91' + digits
-  }
-  return digits || undefined
-}
+const { normalizeWhatsappDigits } = require('../../utils/whatsappNormalize')
 
 exports.blockUser = async (req, res) => {
   const user = await User.findByIdAndUpdate(
@@ -339,7 +328,7 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ message: 'Email is required' })
     }
 
-    const normalizedWhatsapp = normalizeWhatsappInput(whatsapp)
+    const normalizedWhatsapp = normalizeWhatsappDigits(whatsapp)
 
     const existingMobile = await User.findOne({ mobile })
     if (existingMobile) {
@@ -1619,14 +1608,9 @@ exports.bulkCreateUsers = async (req, res) => {
         const formattedEmail = emailRaw?.toString().trim().toLowerCase();
 
         const whatsappRaw = row['WhatsApp'] || row['Whatsapp'];
-        let whatsapp = whatsappRaw?.toString().replace(/\D/g, '');
+        const whatsapp = normalizeWhatsappDigits(whatsappRaw);
 
         const plainPassword = row['Password']?.toString();
-
-        // Add country code if missing (India)
-        if (whatsapp && !whatsapp.startsWith('91')) {
-          whatsapp = '91' + whatsapp;
-        }
 
         // Required validation
         if (!fullName || !formattedEmail || !whatsapp || !plainPassword) {

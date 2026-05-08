@@ -1,5 +1,6 @@
 const User = require('../user/user.model')
 const { generateAccessToken } = require('../../utils/jwt.utils')
+const { normalizeWhatsappDigits } = require('../../utils/whatsappNormalize')
 const bcrypt = require('bcryptjs')
 const { randomInt } = require('crypto')
 // const { sendWhatsAppMessage } = require('../../services/wati.service')
@@ -544,15 +545,33 @@ exports.login = async (req, res) => {
   try {
     const { email, whatsapp, password, deviceId } = req.body
 
-    if ((!email && !whatsapp) || !password) {
+    const emailNormalized =
+      email !== undefined && email !== null && String(email).trim() !== ''
+        ? String(email).trim().toLowerCase()
+        : ''
+
+    const whatsappNormalized =
+      whatsapp !== undefined && whatsapp !== null && String(whatsapp).trim() !== ''
+        ? normalizeWhatsappDigits(whatsapp)
+        : ''
+
+    if (!emailNormalized && !whatsappNormalized) {
       return res
         .status(400)
         .json({ message: 'Email or WhatsApp number and password are required' })
     }
 
-    // Find user by email or WhatsApp
+    if (!password || typeof password !== 'string') {
+      return res
+        .status(400)
+        .json({ message: 'Email or WhatsApp number and password are required' })
+    }
+
+    // Find user by normalized email (matches admin/bulk storage) or normalized WhatsApp
     const user = await User.findOne(
-      email ? { email: email.toLowerCase() } : { whatsapp }
+      emailNormalized
+        ? { email: emailNormalized }
+        : { whatsapp: whatsappNormalized }
     )
 
     if (!user) {
