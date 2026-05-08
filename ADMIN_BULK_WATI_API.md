@@ -10,7 +10,28 @@
 
 ---
 
-## 2. Bulk create users (with WATI)
+## 2. Create single user (admin)
+
+- **Route:** `POST /api/admin/users`
+- **Auth:** Admin Bearer token
+- **Content-Type:** `application/json`
+
+**Body (JSON):**
+
+| Field | Required | Notes |
+|-------|----------|--------|
+| `mobile` | Yes | Unique per user |
+| `email` | Yes | Stored lowercased; must be unique |
+| `password` | Yes | Plain text in transit only over HTTPS; **8–128 characters**; hashed with bcrypt server-side |
+| `fullName` | No | |
+| `whatsapp` | No | Digits normalized; `91` prepended when missing (same rules as bulk create) |
+| `profilePic`, `firebaseToken` | No | |
+
+**Responses:** `201` returns `{ success, message, data }` where `data` is the created user document **without** the `password` field. `400` validation errors; `409` if mobile, email, or WhatsApp already exists.
+
+---
+
+## 3. Bulk create users (with WATI)
 
 - **Route:** `POST /api/admin/bulk-create-users`
 - **Auth:** Admin Bearer token
@@ -40,7 +61,7 @@
 
 ---
 
-## 3. Bulk assign subscription (no WATI)
+## 4. Bulk assign subscription (no WATI)
 
 - **Route:** `POST /api/admin/bulk-subscription`
 - **Auth:** Admin Bearer token
@@ -68,17 +89,18 @@
 
 ---
 
-## 4. Quick reference
+## 5. Quick reference
 
 | Route                      | Method | Auth   | Request           | WATI used        |
 |----------------------------|--------|--------|-------------------|------------------|
 | `/api/admin/auth/login`    | POST   | None   | JSON `email`, `password` | No  |
+| `/api/admin/users`         | POST   | Bearer | JSON user + `password` (single create) | No  |
 | `/api/admin/bulk-create-users` | POST | Bearer | multipart `file` (Excel) | Yes – **buli_create_user_v5** |
 | `/api/admin/bulk-subscription` | POST | Bearer | multipart `file` (Excel) | No  |
 
 ---
 
-## 5. Excel template (export)
+## 6. Excel template (export)
 
 - **Route:** `GET /api/admin/export-users` (Admin Bearer token)
 - Returns **users_bulk_subscription.xlsx** with columns: **Full Name**, **Email**, **WhatsApp**, **Mobile**, **Password**, **Blocked**, **Created At**, **Plan Code**, **Duration**.
@@ -86,7 +108,7 @@
 
 ---
 
-## 6. Notes
+## 7. Notes
 
 - **WATI template for bulk user creation:** **buli_create_user_v5** (body: fullName, email; button: email). Ensure this template exists in the WATI dashboard.
 - Bulk subscription does not send any WhatsApp message; add later if required.

@@ -13,6 +13,18 @@ const UserSubscription = require('../subscription/subscription.model')
 const ExcelJS = require('exceljs')
 const crypto = require('crypto')
 
+/** Normalize WhatsApp to digits with India country code when missing (aligned with bulk create). */
+function normalizeWhatsappInput (whatsappRaw) {
+  if (whatsappRaw === undefined || whatsappRaw === null) return undefined
+  const s = String(whatsappRaw).trim()
+  if (!s) return undefined
+  let digits = s.replace(/\D/g, '')
+  if (digits && !digits.startsWith('91')) {
+    digits = '91' + digits
+  }
+  return digits || undefined
+}
+
 exports.blockUser = async (req, res) => {
   const user = await User.findByIdAndUpdate(
     req.params.id,
@@ -255,7 +267,7 @@ exports.getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .populate('activePlan')
-      .select('-__v')
+      .select('-password -__v')
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' })
@@ -290,38 +302,101 @@ exports.getUserById = async (req, res) => {
  */
 exports.createUser = async (req, res) => {
   try {
-    const { mobile, fullName, email, whatsapp, profilePic, firebaseToken } =
-      req.body
-
-    if (!mobile) {
-      return res.status(400).json({ message: 'Mobile number is required' })
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ mobile })
-    if (existingUser) {
-      return res
-        .status(409)
-        .json({ message: 'User with this mobile number already exists' })
-    }
-
-    const user = await User.create({
+    const {
       mobile,
       fullName,
       email,
       whatsapp,
       profilePic,
       firebaseToken,
+      password
+    } = req.body
+
+    if (!mobile) {
+      return res.status(400).json({ message: 'Mobile number is required' })
+    }
+
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ message: 'Password is required' })
+    }
+    const trimmedPassword = password.trim()
+    if (trimmedPassword.length < 8) {
+      return res
+        .status(400)
+        .json({ message: 'Password must be at least 8 characters long' })
+    }
+    if (trimmedPassword.length > 128) {
+      return res
+        .status(400)
+        .json({ message: 'Password must be at most 128 characters long' })
+    }
+
+    const formattedEmail =
+      email !== undefined && email !== null
+        ? String(email).trim().toLowerCase()
+        : ''
+    if (!formattedEmail) {
+      return res.status(400).json({ message: 'Email is required' })
+    }
+
+    const normalizedWhatsapp = normalizeWhatsappInput(whatsapp)
+
+    const existingMobile = await User.findOne({ mobile })
+    if (existingMobile) {
+      return res
+        .status(409)
+        .json({ message: 'User with this mobile number already exists' })
+    }
+
+    const existingEmail = await User.findOne({ email: formattedEmail })
+    if (existingEmail) {
+      return res
+        .status(409)
+        .json({ message: 'User with this email already exists' })
+    }
+
+    if (normalizedWhatsapp) {
+      const existingWa = await User.findOne({ whatsapp: normalizedWhatsapp })
+      if (existingWa) {
+        return res.status(409).json({
+          message: 'User with this WhatsApp number already exists'
+        })
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(trimmedPassword, 10)
+
+    const user = await User.create({
+      mobile,
+      fullName,
+      email: formattedEmail,
+      whatsapp: normalizedWhatsapp,
+      profilePic,
+      firebaseToken,
+      password: hashedPassword,
       isBlocked: false
     })
+
+    const created = await User.findById(user._id).select('-password -__v').lean()
 
     res.status(201).json({
       success: true,
       message: 'User created successfully',
-      data: user
+      data: created
     })
   } catch (error) {
     if (error.code === 11000) {
+      const key = error.keyPattern ? Object.keys(error.keyPattern)[0] : null
+      if (key === 'email') {
+        return res
+          .status(409)
+          .json({ message: 'User with this email already exists' })
+      }
+      if (key === 'whatsapp') {
+        return res.status(409).json({
+          message: 'User with this WhatsApp number already exists'
+        })
+      }
       return res
         .status(409)
         .json({ message: 'User with this mobile number already exists' })
@@ -352,10 +427,12 @@ exports.updateUser = async (req, res) => {
 
     await user.save()
 
+    const safe = await User.findById(user._id).select('-password -__v').lean()
+
     res.json({
       success: true,
       message: 'User updated successfully',
-      data: user
+      data: safe
     })
   } catch (error) {
     console.error('Update user error:', error)
@@ -422,7 +499,7 @@ exports.getAllUsers = async (req, res) => {
     }
 
     // Get all users matching filters (before pagination)
-    let users = await User.find(query).select('-__v').lean()
+    let users = await User.find(query).select('-password -__v').lean()
 
     // Populate planExpiry and filter by subscription status
     const usersWithExpiry = await Promise.all(
@@ -800,7 +877,7 @@ exports.getBestsellerPlans = async (req, res) => {
 
 exports.exportUsersExcel = async (req, res) => {
   try {
-    const users = await User.find().lean()
+    const users = await User.find().select('-password').lean()
     const userIds = users.map(u => u._id)
 
     const activeSubscriptions = await UserSubscription.find({
