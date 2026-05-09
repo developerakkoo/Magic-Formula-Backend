@@ -1,3 +1,4 @@
+// Controller lOad
 const User = require('../user/user.model')
 const Admin = require('./admin.model')
 const jwt = require('jsonwebtoken')
