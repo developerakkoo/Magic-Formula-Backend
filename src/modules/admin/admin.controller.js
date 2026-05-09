@@ -544,12 +544,13 @@ exports.getAllUsers = async (req, res) => {
       query.isBlocked = isBlocked === 'true' || isBlocked === true
     }
 
-    // Search by name, email, or mobile
+    // Search by name, email, mobile, or WhatsApp number
     if (search) {
       query.$or = [
         { fullName: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
-        { mobile: { $regex: search, $options: 'i' } }
+        { mobile: { $regex: search, $options: 'i' } },
+        { whatsapp: { $regex: search, $options: 'i' } }
       ]
     }
 
