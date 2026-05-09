@@ -526,7 +526,7 @@ exports.getAllUsers = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 50,
+      limit,
       search,
       isBlocked,
       hasActivePlan,
@@ -616,19 +616,23 @@ exports.getAllUsers = async (req, res) => {
       return 0
     })
 
-    // Pagination
+    // Pagination is optional. If no limit is provided, return all matching users.
     const totalCount = filteredUsers.length
-    const totalPages = Math.ceil(totalCount / limit)
-    const skip = (page - 1) * limit
-    const paginatedUsers = filteredUsers.slice(skip, skip + parseInt(limit))
+    const limitNum = limit !== undefined ? parseInt(limit) : null
+    const pageNum = parseInt(page)
+    const totalPages = limitNum ? Math.ceil(totalCount / limitNum) : 1
+    const skip = limitNum ? (pageNum - 1) * limitNum : 0
+    const usersToReturn = limitNum
+      ? filteredUsers.slice(skip, skip + limitNum)
+      : filteredUsers
 
     res.json({
       success: true,
       count: totalCount,
-      page: parseInt(page),
+      page: pageNum,
       totalPages,
-      limit: parseInt(limit),
-      users: paginatedUsers
+      limit: limitNum,
+      users: usersToReturn
     })
   } catch (error) {
     console.error('Get all users error:', error)
