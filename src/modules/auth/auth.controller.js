@@ -57,12 +57,10 @@ exports.register = async (req, res) => {
         .json({ message: 'Email, password, and WhatsApp number are required' })
     }
 
-    // Device ID is required for registration
-    if (!deviceId) {
-      return res
-        .status(400)
-        .json({ message: 'Device ID is required for registration' })
-    }
+    const resolvedDeviceId =
+      deviceId != null && String(deviceId).trim() !== ''
+        ? String(deviceId).trim()
+        : null
 
     // Check if user already exists
     const existingUser = await User.findOne({
@@ -86,7 +84,7 @@ exports.register = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    // Create new user with deviceId (required)
+    // Create new user (deviceId optional for web)
     const user = await User.create({
       email: email.toLowerCase(),
       password: hashedPassword,
@@ -96,8 +94,8 @@ exports.register = async (req, res) => {
       firebaseToken,
       activePlan: activePlan || null,
       planExpiry: planExpiry || null,
-      deviceId: deviceId, // Required - already validated above
-      lastDeviceLogin: new Date() // Set on successful registration
+      deviceId: resolvedDeviceId,
+      lastDeviceLogin: resolvedDeviceId ? new Date() : null
     })
 
     // 🚫 Block check (admin blocking)
@@ -221,33 +219,26 @@ exports.registerMobile = async (req, res) => {
       if (activePlan !== undefined) user.activePlan = activePlan
       if (planExpiry !== undefined) user.planExpiry = planExpiry
 
-      // 🔒 Device restriction check
-      if (deviceId) {
-        // If user has no device ID set (first login), set it
-        if (!user.deviceId) {
-          user.deviceId = deviceId
-          user.lastDeviceLogin = new Date()
-        } else {
-          // If device ID doesn't match, block login
-          if (user.deviceId !== deviceId) {
-            return res.status(403).json({
-              message:
-                'Login failed. This account is registered to another device. Contact admin to reset device.',
-              isBlocked: true,
-              isDeviceMismatch: true
-            })
-          } else {
-            // Device ID matches, update last login timestamp
-            user.lastDeviceLogin = new Date()
-            user.lastActivity = new Date() // Update activity on login
-          }
-        }
-      }
-
-      // Update lastActivity if not already set
-      if (!user.lastActivity) {
-        user.lastActivity = new Date()
-      }
+      // 🔒 Device restriction check — DISABLED (uncomment to re-enable single-device)
+      // if (deviceId) {
+      //   if (!user.deviceId) {
+      //     user.deviceId = deviceId
+      //     user.lastDeviceLogin = new Date()
+      //   } else {
+      //     if (user.deviceId !== deviceId) {
+      //       return res.status(403).json({
+      //         message:
+      //           'Login failed. This account is registered to another device. Contact admin to reset device.',
+      //         isBlocked: true,
+      //         isDeviceMismatch: true
+      //       })
+      //     } else {
+      //       user.lastDeviceLogin = new Date()
+      //       user.lastActivity = new Date()
+      //     }
+      //   }
+      // }
+      user.lastActivity = new Date()
 
       await user.save()
     }
@@ -462,26 +453,34 @@ exports.verifyWhatsAppOtp = async (req, res) => {
       });
     }
 
-    // 🔒 Device restriction logic (same as old login)
-    if (user.deviceId) {
-      if (!deviceId || user.deviceId !== deviceId) {
-        return res.status(403).json({
-          message:
-            "Login failed. This account is registered to another device. Contact admin.",
-          isBlocked: true,
-          isDeviceMismatch: true
-        });
-      }
-
-      user.lastDeviceLogin = new Date();
-      user.lastActivity = new Date();
-    } else {
-      if (deviceId) {
-        user.deviceId = deviceId;
-        user.lastDeviceLogin = new Date();
-        user.lastActivity = new Date();
-      }
-    }
+    // 🔒 Device restriction — DISABLED (uncomment block below to re-enable)
+    // const deviceIdProvided =
+    //   deviceId != null && String(deviceId).trim() !== ''
+    // if (user.deviceId) {
+    //   if (deviceIdProvided) {
+    //     if (user.deviceId !== deviceId) {
+    //       return res.status(403).json({
+    //         message:
+    //           "Login failed. This account is registered to another device. Contact admin.",
+    //         isBlocked: true,
+    //         isDeviceMismatch: true
+    //       });
+    //     }
+    //     user.lastDeviceLogin = new Date();
+    //     user.lastActivity = new Date();
+    //   } else {
+    //     user.lastActivity = new Date();
+    //   }
+    // } else {
+    //   if (deviceIdProvided) {
+    //     user.deviceId = deviceId;
+    //     user.lastDeviceLogin = new Date();
+    //     user.lastActivity = new Date();
+    //   } else {
+    //     user.lastActivity = new Date();
+    //   }
+    // }
+    user.lastActivity = new Date();
 
     // Clear OTP
     user.otpCodeHash = null;
@@ -599,51 +598,34 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' })
     }
 
-    // 🔒 Device restriction check
-    if (user.deviceId) {
-      // User has deviceId set - must match login request
-      if (!deviceId) {
-        // User has deviceId but login request doesn't include it - treat as mismatch
-        return res.status(403).json({
-          message:
-            'Login failed. This account is registered to another device. Contact admin to reset device.',
-          isBlocked: true,
-          isDeviceMismatch: true
-        })
-      }
-
-      // Check if device ID matches
-      if (user.deviceId !== deviceId) {
-        // Device ID doesn't match - block login
-        return res.status(403).json({
-          message:
-            'Login failed. This account is registered to another device. Contact admin to reset device.',
-          isBlocked: true,
-          isDeviceMismatch: true
-        })
-      }
-
-      // Device ID matches - update last login timestamp and activity
-      user.lastDeviceLogin = new Date()
-      user.lastActivity = new Date() // Update activity on login
-      await user.save()
-    } else {
-      // User doesn't have deviceId - either legacy user or admin reset device
-      // If deviceId is provided, set it and allow login (this handles post-reset login)
-      if (!deviceId) {
-        return res.status(400).json({
-          message:
-            'Device ID is required for login. Please contact admin if you need assistance.'
-        })
-      }
-
-      // Set deviceId for user (handles both legacy users and post-reset login)
-      user.deviceId = deviceId
-      user.lastDeviceLogin = new Date()
-      user.lastActivity = new Date() // Update activity on login
-      await user.save()
-      // Continue to login (don't return here)
-    }
+    // 🔒 Device restriction — DISABLED (uncomment block below to re-enable)
+    // const deviceIdProvided =
+    //   deviceId != null && String(deviceId).trim() !== ''
+    // if (deviceIdProvided) {
+    //   if (user.deviceId) {
+    //     if (user.deviceId !== deviceId) {
+    //       return res.status(403).json({
+    //         message:
+    //           'Login failed. This account is registered to another device. Contact admin to reset device.',
+    //         isBlocked: true,
+    //         isDeviceMismatch: true
+    //       })
+    //     }
+    //     user.lastDeviceLogin = new Date()
+    //     user.lastActivity = new Date()
+    //     await user.save()
+    //   } else {
+    //     user.deviceId = deviceId
+    //     user.lastDeviceLogin = new Date()
+    //     user.lastActivity = new Date()
+    //     await user.save()
+    //   }
+    // } else {
+    //   user.lastActivity = new Date()
+    //   await user.save()
+    // }
+    user.lastActivity = new Date()
+    await user.save()
 
     // 🚫 Block check (admin blocking)
     if (user.isBlocked) {
