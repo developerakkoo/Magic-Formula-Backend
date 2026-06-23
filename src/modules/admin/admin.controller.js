@@ -15,6 +15,9 @@ const ExcelJS = require('exceljs')
 const crypto = require('crypto')
 const { normalizeWhatsappDigits } = require('../../utils/whatsappNormalize')
 
+const normalizeSearchDigits = value =>
+  String(value ?? '').replace(/\D/g, '')
+
 const matchesSearchTerm = (value, searchTerm) => {
   if (value === null || value === undefined) return false
 
@@ -39,7 +42,12 @@ const matchesSearchTerm = (value, searchTerm) => {
     return Object.values(value).some(item => matchesSearchTerm(item, searchTerm))
   }
 
-  return String(value).toLowerCase().includes(searchTerm)
+  const stringValue = String(value).toLowerCase()
+  if (stringValue.includes(searchTerm)) return true
+
+  const valueDigits = normalizeSearchDigits(value)
+  const searchDigits = normalizeSearchDigits(searchTerm)
+  return Boolean(searchDigits) && valueDigits.includes(searchDigits)
 }
 
 exports.blockUser = async (req, res) => {
