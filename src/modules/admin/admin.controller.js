@@ -566,6 +566,7 @@ exports.getAllUsers = async (req, res) => {
       search,
       isBlocked,
       hasActivePlan,
+      status,
       planExpiryStart,
       planExpiryEnd,
       sortBy = 'createdAt',
@@ -607,6 +608,28 @@ exports.getAllUsers = async (req, res) => {
 
     // Filter by hasActivePlan
     let filteredUsers = usersWithExpiry
+
+    if (status) {
+      const normalizedStatus = String(status).trim().toLowerCase()
+
+      if (normalizedStatus === 'blocked') {
+        filteredUsers = filteredUsers.filter(user => user.isBlocked === true)
+      } else if (normalizedStatus === 'subscribed') {
+        filteredUsers = filteredUsers.filter(
+          user => user.isBlocked !== true && user.hasActivePlan === true
+        )
+      } else if (normalizedStatus === 'unsubscribed') {
+        filteredUsers = filteredUsers.filter(
+          user => user.isBlocked !== true && user.hasActivePlan === false
+        )
+      } else if (normalizedStatus !== 'all') {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid status filter. Use 'blocked', 'subscribed', 'unsubscribed', or 'all'."
+        })
+      }
+    }
 
     // Search across all user fields and derived plan fields
     if (search) {
@@ -1252,6 +1275,119 @@ exports.bulkAssignSubscription = async (req, res) => {
     })
   } catch (error) {
     console.error('Bulk subscription error:', error)
+    return res.status(500).json({ message: error.message })
+  }
+}
+
+exports.bulkRemoveSubscription = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Excel file required' })
+    }
+
+    const workbook = xlsx.read(req.file.buffer)
+    const sheet = workbook.Sheets[workbook.SheetNames[0]]
+    const rows = xlsx.utils.sheet_to_json(sheet)
+
+    if (!rows.length) {
+      return res.status(400).json({ message: 'Excel file is empty' })
+    }
+
+    const success = []
+    const failed = []
+
+    let rowNumber = 1
+
+    for (const row of rows) {
+      try {
+        const email = row.Email ? String(row.Email).trim().toLowerCase() : null
+        const mobileRaw = row.Mobile || row.WhatsApp || row.Whatsapp
+        const mobile = mobileRaw ? String(mobileRaw).replace(/\D/g, '') : null
+
+        if (!email && !mobile) {
+          failed.push({
+            rowNumber,
+            email,
+            mobile,
+            reason: 'Email or Mobile required'
+          })
+          rowNumber++
+          continue
+        }
+
+        const user = await User.findOne({
+          $or: [email ? { email } : null, mobile ? { mobile } : null].filter(
+            Boolean
+          )
+        })
+
+        if (!user) {
+          failed.push({
+            rowNumber,
+            email,
+            mobile,
+            reason: 'User not found'
+          })
+          rowNumber++
+          continue
+        }
+
+        const activeSubscription = await UserSubscription.findOne({
+          userId: user._id,
+          isActive: true
+        })
+
+        if (!activeSubscription) {
+          failed.push({
+            rowNumber,
+            email,
+            mobile,
+            userId: user._id,
+            reason: 'No active subscription found'
+          })
+          rowNumber++
+          continue
+        }
+
+        await UserSubscription.updateMany(
+          { userId: user._id, isActive: true },
+          { isActive: false }
+        )
+
+        await User.findByIdAndUpdate(user._id, {
+          activePlan: null
+        })
+
+        success.push({
+          rowNumber,
+          userId: user._id,
+          email,
+          mobile,
+          removedSubscriptionId: activeSubscription._id,
+          planId: activeSubscription.planId
+        })
+      } catch (err) {
+        failed.push({
+          rowNumber,
+          reason: err.message
+        })
+      }
+
+      rowNumber++
+    }
+
+    return res.json({
+      message: 'Bulk subscription removal processed',
+      summary: {
+        totalRows: rows.length,
+        successCount: success.length,
+        failedCount: failed.length
+      },
+      success,
+      failed
+    })
+  } catch (error) {
+    console.error('Bulk subscription removal error:', error)
     return res.status(500).json({ message: error.message })
   }
 }

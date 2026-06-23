@@ -32,6 +32,11 @@ const userSchema = new mongoose.Schema(
     otpLastSentAt: { type: Date, default: null },
     otpAttempts: { type: Number, default: 0 },
 
+    passwordResetOtpHash: { type: String, default: null },
+    passwordResetOtpExpiresAt: { type: Date, default: null },
+    passwordResetOtpLastSentAt: { type: Date, default: null },
+    passwordResetOtpAttempts: { type: Number, default: 0 },
+
     activePlan: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan' },
     planExpiry: Date
   },

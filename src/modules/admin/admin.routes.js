@@ -31,5 +31,6 @@ router.get('/export-earnings', adminAuth, adminController.exportEarningsExcel);
 
 router.post('/bulk-create-users', adminAuth, excelUpload.single('file'),  adminController.bulkCreateUsers);
 router.post('/bulk-subscription', adminAuth, excelUpload.single('file'), adminController.bulkAssignSubscription);
+router.post('/bulk-remove-subscription', adminAuth, excelUpload.single('file'), adminController.bulkRemoveSubscription);
 
 module.exports = router;

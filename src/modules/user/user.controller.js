@@ -5,6 +5,22 @@ const bcrypt = require('bcryptjs');
 // Redis disabled
 // const { getLiveUsersCount } = require('../../utils/liveUsers.redis');
 const crypto = require("crypto");
+const {
+  sendPasswordResetOtpEmail
+} = require('../../services/email.service');
+
+const PASSWORD_RESET_OTP_LENGTH = 6
+const PASSWORD_RESET_OTP_EXPIRY_MINUTES = 10
+const PASSWORD_RESET_OTP_RESEND_SECONDS = 30
+const PASSWORD_RESET_OTP_MAX_ATTEMPTS = 5
+
+const normalizeEmail = value => String(value || '').trim().toLowerCase()
+
+const generateOtpCode = length => {
+  const min = 10 ** (length - 1)
+  const maxExclusive = 10 ** length
+  return String(crypto.randomInt(min, maxExclusive))
+}
 // exports.getProfilePhoto = async (req, res) => {
 //   const user = await User.findById(req.params.id);
 
@@ -541,3 +557,234 @@ exports.resetPasswordByEmail = async (req, res) => {
     res.status(500).send("Something went wrong");
   }
 };
+
+exports.showForgotPasswordPage = async (req, res) => {
+  try {
+    const { email } = req.query
+    const initialEmail = email ? normalizeEmail(email) : ''
+
+    res.send(`
+    <html>
+    <head>
+    <style>
+    body {
+      font-family: Arial;
+      background: #f4f6f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      width: 420px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .hint {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.5;
+    }
+    </style>
+    </head>
+    <body>
+    <div class="card">
+      <h2>Forgot Password</h2>
+      <p class="hint">
+        1) Request an OTP using <code>POST /api/users/forgot-password/request-otp</code>.<br/>
+        2) Enter the OTP and new password below to complete the reset.
+      </p>
+
+      <form method="POST" action="/api/users/forgot-password/reset">
+        <input type="email" name="email" placeholder="Email" value="${initialEmail}" required />
+        <input type="text" name="otp" placeholder="OTP" required />
+        <input type="password" name="newPassword" placeholder="New Password" required />
+        <input type="password" name="confirmPassword" placeholder="Confirm New Password" required />
+        <button type="submit">Reset Password</button>
+      </form>
+    </div>
+    </body>
+    </html>
+    `)
+  } catch (error) {
+    console.error('Show forgot password page error:', error)
+    res.status(500).send('Something went wrong')
+  }
+}
+
+exports.requestPasswordResetOtp = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email)
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' })
+    }
+
+    console.log(`[forgot-password] OTP request received for ${email}`)
+
+    const user = await User.findOne({ email })
+
+    if (!user) {
+      console.log(`[forgot-password] No user found for ${email}`)
+      return res.json({
+        success: true,
+        message: 'If the email exists, an OTP has been sent'
+      })
+    }
+
+    if (!user.password) {
+      console.log(`[forgot-password] User ${email} has no password set`)
+      return res.status(400).json({
+        message: 'This account does not have an email password set'
+      })
+    }
+
+    if (
+      user.passwordResetOtpLastSentAt &&
+      Date.now() - new Date(user.passwordResetOtpLastSentAt).getTime() <
+        PASSWORD_RESET_OTP_RESEND_SECONDS * 1000
+    ) {
+      const retryAfterSeconds = Math.max(
+        1,
+        PASSWORD_RESET_OTP_RESEND_SECONDS -
+          Math.floor(
+            (Date.now() - new Date(user.passwordResetOtpLastSentAt).getTime()) /
+              1000
+          )
+      )
+
+      return res.status(429).json({
+        message: `Please wait ${retryAfterSeconds} seconds before requesting another OTP`
+      })
+    }
+
+    const otpCode = generateOtpCode(PASSWORD_RESET_OTP_LENGTH)
+    const hashedOtp = await bcrypt.hash(otpCode, 10)
+    const otpExpiresAt = new Date(
+      Date.now() + PASSWORD_RESET_OTP_EXPIRY_MINUTES * 60 * 1000
+    )
+
+    console.log(`[forgot-password] Sending OTP email to ${email}`)
+    await sendPasswordResetOtpEmail({
+      to: user.email,
+      otpCode,
+      fullName: user.fullName
+    })
+    console.log(`[forgot-password] OTP email sent to ${email}`)
+
+    user.passwordResetOtpHash = hashedOtp
+    user.passwordResetOtpExpiresAt = otpExpiresAt
+    user.passwordResetOtpLastSentAt = new Date()
+    user.passwordResetOtpAttempts = 0
+
+    await user.save()
+
+    return res.json({
+      success: true,
+      message: 'OTP sent to your email'
+    })
+  } catch (error) {
+    console.error('Password reset OTP error:', error)
+    return res.status(500).json({ message: error.message || 'Server error' })
+  }
+}
+
+exports.resetPasswordWithOtp = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email)
+    const otp = String(req.body.otp || '').trim()
+    const { newPassword, confirmPassword } = req.body
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' })
+    }
+
+    if (!otp) {
+      return res.status(400).json({ message: 'OTP is required' })
+    }
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ message: 'All fields are required' })
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match' })
+    }
+
+    if (String(newPassword).length < 8) {
+      return res
+        .status(400)
+        .json({ message: 'Password must be at least 8 characters' })
+    }
+
+    const user = await User.findOne({ email })
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    if (!user.passwordResetOtpHash || !user.passwordResetOtpExpiresAt) {
+      return res.status(400).json({ message: 'No active password reset OTP' })
+    }
+
+    if (user.passwordResetOtpExpiresAt < new Date()) {
+      return res.status(400).json({ message: 'Password reset OTP expired' })
+    }
+
+    const isValidOtp = await bcrypt.compare(otp, user.passwordResetOtpHash)
+
+    if (!isValidOtp) {
+      user.passwordResetOtpAttempts = (user.passwordResetOtpAttempts || 0) + 1
+
+      if (user.passwordResetOtpAttempts >= PASSWORD_RESET_OTP_MAX_ATTEMPTS) {
+        user.passwordResetOtpHash = null
+        user.passwordResetOtpExpiresAt = null
+        user.passwordResetOtpAttempts = 0
+        user.passwordResetOtpLastSentAt = null
+      }
+
+      await user.save()
+
+      return res.status(401).json({ message: 'Invalid OTP' })
+    }
+
+    user.password = await bcrypt.hash(String(newPassword), 10)
+    user.passwordResetOtpHash = null
+    user.passwordResetOtpExpiresAt = null
+    user.passwordResetOtpAttempts = 0
+    user.passwordResetOtpLastSentAt = null
+
+    await user.save()
+
+    return res.json({
+      success: true,
+      message: 'Password reset successfully'
+    })
+  } catch (error) {
+    console.error('Reset password with OTP error:', error)
+    return res.status(500).json({ message: error.message || 'Server error' })
+  }
+}
+
+exports.showResetForm = exports.showForgotPasswordPage
+exports.resetPasswordByEmail = exports.resetPasswordWithOtp
