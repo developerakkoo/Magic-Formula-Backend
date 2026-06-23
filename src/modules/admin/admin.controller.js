@@ -15,6 +15,33 @@ const ExcelJS = require('exceljs')
 const crypto = require('crypto')
 const { normalizeWhatsappDigits } = require('../../utils/whatsappNormalize')
 
+const matchesSearchTerm = (value, searchTerm) => {
+  if (value === null || value === undefined) return false
+
+  if (Array.isArray(value)) {
+    return value.some(item => matchesSearchTerm(item, searchTerm))
+  }
+
+  if (value instanceof Date) {
+    return value.toString().toLowerCase().includes(searchTerm)
+  }
+
+  if (typeof value === 'object') {
+    const stringValue = value.toString?.()
+    if (
+      stringValue &&
+      stringValue !== '[object Object]' &&
+      stringValue.toLowerCase().includes(searchTerm)
+    ) {
+      return true
+    }
+
+    return Object.values(value).some(item => matchesSearchTerm(item, searchTerm))
+  }
+
+  return String(value).toLowerCase().includes(searchTerm)
+}
+
 exports.blockUser = async (req, res) => {
   const user = await User.findByIdAndUpdate(
     req.params.id,
@@ -545,16 +572,6 @@ exports.getAllUsers = async (req, res) => {
       query.isBlocked = isBlocked === 'true' || isBlocked === true
     }
 
-    // Search by name, email, mobile, or WhatsApp number
-    if (search) {
-      query.$or = [
-        { fullName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { mobile: { $regex: search, $options: 'i' } },
-        { whatsapp: { $regex: search, $options: 'i' } }
-      ]
-    }
-
     // Get all users matching filters (before pagination)
     let users = await User.find(query).select('-password -__v').lean()
 
@@ -582,9 +599,20 @@ exports.getAllUsers = async (req, res) => {
 
     // Filter by hasActivePlan
     let filteredUsers = usersWithExpiry
+
+    // Search across all user fields and derived plan fields
+    if (search) {
+      const searchTerm = String(search).trim().toLowerCase()
+      if (searchTerm) {
+        filteredUsers = filteredUsers.filter(user =>
+          matchesSearchTerm(user, searchTerm)
+        )
+      }
+    }
+
     if (hasActivePlan !== undefined) {
       const hasPlan = hasActivePlan === 'true' || hasActivePlan === true
-      filteredUsers = usersWithExpiry.filter(
+      filteredUsers = filteredUsers.filter(
         user => user.hasActivePlan === hasPlan
       )
     }
