@@ -3,6 +3,7 @@
 const express = require('express');
 const cors = require('cors');
 const app = express();
+const maintenanceMiddleware = require('./middlewares/maintenance.middleware');
 
 require('./cron/subscriptionReminder'); // (cron is loaded)
 require('./cron/subscriptionExpiry');
@@ -45,6 +46,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Maintenance gate:
+// Blocks public APIs when maintenanceMode is enabled, while keeping admin routes available.
+app.use(maintenanceMiddleware);
 
 // health check
 app.get('/', (req, res) => {
