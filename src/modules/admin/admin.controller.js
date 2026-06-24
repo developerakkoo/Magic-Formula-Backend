@@ -50,6 +50,43 @@ const matchesSearchTerm = (value, searchTerm) => {
   return Boolean(searchDigits) && valueDigits.includes(searchDigits)
 }
 
+const USER_SEARCH_FIELDS = [
+  'fullName',
+  'email',
+  'mobile',
+  'whatsapp',
+  'deviceId',
+  'profilePic',
+  '_id',
+  'createdAt',
+  'updatedAt',
+  'lastActivity',
+  'lastDeviceLogin',
+  'planExpiry',
+  'hasActivePlan',
+  'isBlocked',
+  'firebaseTokens',
+  'activePlan',
+  'deviceChangeRequested',
+  'deviceChangeRequestedAt',
+  'passwordSet'
+]
+
+const userMatchesSearch = (user, searchTerm) =>
+  USER_SEARCH_FIELDS.some(field => {
+    const value = user[field]
+    if (value === undefined || value === null) return false
+    return matchesSearchTerm(value, searchTerm)
+  })
+
+const isUserLive = user => {
+  if (user.isBlocked) return false
+  const activityTime = user.lastActivity || user.lastDeviceLogin
+  if (!activityTime) return false
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
+  return new Date(activityTime) >= thirtyMinutesAgo
+}
+
 exports.blockUser = async (req, res) => {
   const user = await User.findByIdAndUpdate(
     req.params.id,
@@ -622,21 +659,23 @@ exports.getAllUsers = async (req, res) => {
         filteredUsers = filteredUsers.filter(
           user => user.isBlocked !== true && user.hasActivePlan === false
         )
+      } else if (normalizedStatus === 'live') {
+        filteredUsers = filteredUsers.filter(user => isUserLive(user))
       } else if (normalizedStatus !== 'all') {
         return res.status(400).json({
           success: false,
           message:
-            "Invalid status filter. Use 'blocked', 'subscribed', 'unsubscribed', or 'all'."
+            "Invalid status filter. Use 'blocked', 'subscribed', 'unsubscribed', 'live', or 'all'."
         })
       }
     }
 
-    // Search across all user fields and derived plan fields
+    // Search across admin-meaningful user fields and derived plan fields
     if (search) {
       const searchTerm = String(search).trim().toLowerCase()
       if (searchTerm) {
         filteredUsers = filteredUsers.filter(user =>
-          matchesSearchTerm(user, searchTerm)
+          userMatchesSearch(user, searchTerm)
         )
       }
     }

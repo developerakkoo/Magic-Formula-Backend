@@ -112,7 +112,34 @@
 
 ---
 
-## 5. Quick reference
+## 5. Bulk remove subscription (no WATI)
+
+- **Route:** `POST /api/admin/bulk-remove-subscription`
+- **Auth:** Admin Bearer token
+- **Content-Type:** `multipart/form-data`
+- **Body:** single field **`file`** – Excel file (`.xlsx` or `.xls`), max 5MB
+
+**Excel columns (first sheet):**
+
+| Column | Required | Notes |
+|--------|----------|--------|
+| Email  | Optional* | *At least one of Email or Mobile required |
+| Mobile | Optional* | Accepted as **Mobile** or **WhatsApp** / **Whatsapp**; digits normalized |
+
+**Backend behaviour:** For each row: find user by email or mobile → fail if no active subscription → deactivate all active subscriptions → set `user.activePlan` to `null`. **No WhatsApp/WATI message is sent.**
+
+**Response (200):**
+
+- `message`
+- `summary`: `{ totalRows, successCount, failedCount }`
+- `success[]`: `{ rowNumber, userId, email, mobile, removedSubscriptionId, planId }`
+- `failed[]`: `{ rowNumber, email, mobile, reason }`
+
+**Errors:** `400` (no file / empty file), `401` (admin auth required)
+
+---
+
+## 6. Quick reference
 
 | Route                      | Method | Auth   | Request           | WATI used        |
 |----------------------------|--------|--------|-------------------|------------------|
@@ -122,10 +149,11 @@
 | `/api/admin/users/:id`     | PATCH  | Bearer | JSON partial update; optional `password` | No  |
 | `/api/admin/bulk-create-users` | POST | Bearer | multipart `file` (Excel) | Yes – **buli_create_user_v5** |
 | `/api/admin/bulk-subscription` | POST | Bearer | multipart `file` (Excel) | No  |
+| `/api/admin/bulk-remove-subscription` | POST | Bearer | multipart `file` (Excel) | No  |
 
 ---
 
-## 6. Excel template (export)
+## 7. Excel template (export)
 
 - **Route:** `GET /api/admin/export-users` (Admin Bearer token)
 - Returns **users_bulk_subscription.xlsx** with columns: **Full Name**, **Email**, **WhatsApp**, **Mobile**, **Password**, **Blocked**, **Created At**, **Plan Code**, **Duration**.
