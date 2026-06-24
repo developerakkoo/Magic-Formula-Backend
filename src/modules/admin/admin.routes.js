@@ -10,8 +10,11 @@ router.post('/login', adminController.login);
 // PROTECTED (ADMIN LOGIN REQUIRED)
 router.post('/create', adminController.createAdmin);
 router.get('/users', adminAuth, adminController.getAllUsers);
+router.get('/registration-requests', adminAuth, adminController.getPendingRegistrations);
 // IMPORTANT: Specific routes must come before parameterized routes
 router.get('/users/device-conflicts', adminAuth, adminController.getDeviceConflicts);
+router.patch('/users/:id/approve-registration', adminAuth, adminController.approveRegistration);
+router.patch('/users/:id/reject-registration', adminAuth, adminController.rejectRegistration);
 router.get('/users/:id', adminAuth, adminController.getUserById);
 router.post('/users', adminAuth, adminController.createUser);
 router.patch('/users/:id', adminAuth, adminController.updateUser);

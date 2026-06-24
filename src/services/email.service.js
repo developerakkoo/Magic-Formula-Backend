@@ -56,6 +56,49 @@ const sendPasswordResetOtpEmail = async ({ to, otpCode, fullName }) => {
   })
 }
 
+const sendRegistrationDecisionEmail = async ({
+  to,
+  fullName,
+  decision,
+  reason
+}) => {
+  const transporter = getTransporter()
+  const from = getFromAddress()
+
+  if (!from) {
+    throw new Error('MAIL_FROM or SMTP_USER is required')
+  }
+
+  const displayName = fullName ? String(fullName).trim() : 'User'
+  const normalizedDecision = String(decision || '').trim().toUpperCase()
+  const isApproved = normalizedDecision === 'APPROVED'
+  const subject = isApproved
+    ? 'Your Magic Formula registration is approved'
+    : 'Your Magic Formula registration was rejected'
+  const headline = isApproved ? 'Registration Approved' : 'Registration Rejected'
+  const bodyText = isApproved
+    ? 'Your account has been approved. You can now log in to Magic Formula.'
+    : 'Your registration was rejected. You may register again with the same details.'
+  const reasonText = !isApproved && reason ? String(reason).trim() : ''
+
+  return transporter.sendMail({
+    from,
+    to,
+    subject,
+    text: `${displayName}, ${bodyText}${reasonText ? ` Reason: ${reasonText}` : ''}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#1f2937">
+        <h2 style="margin:0 0 12px">${headline}</h2>
+        <p style="margin:0 0 12px">Hi ${displayName},</p>
+        <p style="margin:0 0 16px">${bodyText}</p>
+        ${reasonText ? `<p style="margin:0 0 16px"><strong>Reason:</strong> ${reasonText}</p>` : ''}
+        <p style="margin:16px 0 0;font-size:12px;color:#6b7280">If you need help, please contact support or the admin team.</p>
+      </div>
+    `
+  })
+}
+
 module.exports = {
-  sendPasswordResetOtpEmail
+  sendPasswordResetOtpEmail,
+  sendRegistrationDecisionEmail
 }

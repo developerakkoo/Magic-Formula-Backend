@@ -14,6 +14,11 @@ const UserSubscription = require('../subscription/subscription.model')
 const ExcelJS = require('exceljs')
 const crypto = require('crypto')
 const { normalizeWhatsappDigits } = require('../../utils/whatsappNormalize')
+const Notification = require('../notification/notification.model')
+const UserNotification = require('../notification/userNotification.model')
+const {
+  sendRegistrationDecisionEmail
+} = require('../../services/email.service')
 
 const normalizeSearchDigits = value =>
   String(value ?? '').replace(/\D/g, '')
@@ -69,7 +74,9 @@ const USER_SEARCH_FIELDS = [
   'activePlan',
   'deviceChangeRequested',
   'deviceChangeRequestedAt',
-  'passwordSet'
+  'passwordSet',
+  'registrationStatus',
+  'registrationRequestedAt'
 ]
 
 const userMatchesSearch = (user, searchTerm) =>
@@ -79,8 +86,68 @@ const userMatchesSearch = (user, searchTerm) =>
     return matchesSearchTerm(value, searchTerm)
   })
 
+const REGISTRATION_STATUS = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED'
+}
+
+const normalizeRegistrationStatus = user =>
+  String(user?.registrationStatus || '').trim().toUpperCase()
+
+const buildAdminUserResponse = user => {
+  if (!user) return user
+  return {
+    ...user,
+    registrationStatus: user.registrationStatus || REGISTRATION_STATUS.APPROVED
+  }
+}
+
+const notifyRegistrationDecision = async ({
+  user,
+  adminId,
+  decision,
+  reason
+}) => {
+  const baseNotification = {
+    createdBy: adminId
+  }
+
+  if (decision === REGISTRATION_STATUS.APPROVED) {
+    const notification = await Notification.create({
+      ...baseNotification,
+      title: 'Registration Approved',
+      message: 'Your registration has been approved. You can now log in.',
+      type: 'ALERT',
+      status: 'SENT'
+    })
+
+    await UserNotification.create({
+      user: user._id,
+      notification: notification._id,
+      status: 'SENT'
+    })
+  }
+
+  if (user.email) {
+    try {
+      if (user.email) {
+        await sendRegistrationDecisionEmail({
+          to: user.email,
+          fullName: user.fullName,
+          decision,
+          reason
+        })
+      }
+    } catch (emailError) {
+      console.error('Registration decision email failed:', emailError)
+    }
+  }
+}
+
 const isUserLive = user => {
   if (user.isBlocked) return false
+  if (normalizeRegistrationStatus(user) !== REGISTRATION_STATUS.APPROVED) return false
   const activityTime = user.lastActivity || user.lastDeviceLogin
   if (!activityTime) return false
   const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
@@ -152,6 +219,103 @@ exports.resetUserDevice = async (req, res) => {
     })
   } catch (error) {
     console.error('Reset user device error:', error)
+    res.status(500).json({ message: 'Server error' })
+  }
+}
+
+exports.getPendingRegistrations = async (req, res) => {
+  try {
+    const users = await User.find({
+      registrationStatus: REGISTRATION_STATUS.PENDING
+    })
+      .select('-password -__v')
+      .sort({ createdAt: -1 })
+      .lean()
+
+    res.json({
+      success: true,
+      total: users.length,
+      data: users.map(buildAdminUserResponse)
+    })
+  } catch (error) {
+    console.error('Get pending registrations error:', error)
+    res.status(500).json({ message: 'Server error' })
+  }
+}
+
+exports.approveRegistration = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password -__v')
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    if (normalizeRegistrationStatus(user) === REGISTRATION_STATUS.APPROVED) {
+      return res.json({
+        success: true,
+        message: 'Registration already approved',
+        data: buildAdminUserResponse(user.toObject())
+      })
+    }
+
+    user.registrationStatus = REGISTRATION_STATUS.APPROVED
+    user.registrationReviewedAt = new Date()
+    user.registrationReviewedBy = req.admin._id
+    user.registrationRejectionReason = null
+    user.isBlocked = false
+    await user.save()
+
+    await notifyRegistrationDecision({
+      user,
+      adminId: req.admin._id,
+      decision: REGISTRATION_STATUS.APPROVED
+    })
+
+    res.json({
+      success: true,
+      message: 'Registration approved successfully',
+      data: buildAdminUserResponse(user.toObject())
+    })
+  } catch (error) {
+    console.error('Approve registration error:', error)
+    res.status(500).json({ message: 'Server error' })
+  }
+}
+
+exports.rejectRegistration = async (req, res) => {
+  try {
+    const { reason } = req.body
+    const user = await User.findById(req.params.id)
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    if (normalizeRegistrationStatus(user) === REGISTRATION_STATUS.REJECTED) {
+      return res.json({
+        success: true,
+        message: 'Registration already rejected'
+      })
+    }
+
+    await notifyRegistrationDecision({
+      user,
+      adminId: req.admin._id,
+      decision: REGISTRATION_STATUS.REJECTED,
+      reason
+    })
+
+    await UserSubscription.deleteMany({ userId: user._id })
+    await UserNotification.deleteMany({ user: user._id })
+    await User.deleteOne({ _id: user._id })
+
+    res.json({
+      success: true,
+      message: 'Registration rejected successfully'
+    })
+  } catch (error) {
+    console.error('Reject registration error:', error)
     res.status(500).json({ message: 'Server error' })
   }
 }

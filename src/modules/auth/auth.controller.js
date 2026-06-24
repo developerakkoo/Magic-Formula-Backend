@@ -13,6 +13,11 @@ const OTP_LENGTH = 6
 const OTP_EXPIRY_MINUTES = 5
 const OTP_RESEND_SECONDS = 30
 const OTP_MAX_ATTEMPTS = 5
+const REGISTRATION_STATUS = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED'
+}
 
 const normalizeWhatsAppNumber = value => {
   const digits = String(value || '').replace(/\D/g, '')
@@ -32,6 +37,32 @@ const generateOtpCode = () => {
   const maxExclusive = 10 ** OTP_LENGTH
   return String(randomInt(min, maxExclusive))
 }
+
+const normalizeRegistrationStatus = user =>
+  String(user?.registrationStatus || '').trim().toUpperCase()
+
+const isRegistrationPending = user =>
+  normalizeRegistrationStatus(user) === REGISTRATION_STATUS.PENDING
+
+const isRegistrationRejected = user =>
+  normalizeRegistrationStatus(user) === REGISTRATION_STATUS.REJECTED
+
+const buildUserResponse = (user, baseUrl) => ({
+  _id: user._id,
+  mobile: user.mobile,
+  fullName: user.fullName,
+  email: user.email,
+  whatsapp: user.whatsapp,
+  firebaseToken: user.firebaseToken,
+  isBlocked: user.isBlocked,
+  activePlan: user.activePlan,
+  planExpiry: user.planExpiry,
+  deviceChangeRequested: user.deviceChangeRequested,
+  deviceChangeRequestedAt: user.deviceChangeRequestedAt,
+  registrationStatus: user.registrationStatus || REGISTRATION_STATUS.APPROVED,
+  registrationRequestedAt: user.registrationRequestedAt || null,
+  profilePic: user.profilePic ? `${baseUrl}/api/users/${user._id}` : null
+})
 
 /**
  * REGISTER WITH EMAIL AND PASSWORD
@@ -62,21 +93,27 @@ exports.register = async (req, res) => {
         ? String(deviceId).trim()
         : null
 
-    // Check if user already exists
-    const existingUser = await User.findOne({
+    let existingUser = await User.findOne({
       $or: [{ email: email.toLowerCase() }, { whatsapp }]
     })
 
+    if (existingUser && isRegistrationRejected(existingUser)) {
+      await User.deleteOne({ _id: existingUser._id })
+      existingUser = null
+    }
+
     if (existingUser) {
       if (existingUser.email === email.toLowerCase()) {
-        return res
-          .status(409)
-          .json({ message: 'User with this email already exists' })
+        return res.status(409).json({
+          message:
+            'This email is already registered and waiting for admin approval'
+        })
       }
       if (existingUser.whatsapp === whatsapp) {
-        return res
-          .status(409)
-          .json({ message: 'User with this WhatsApp number already exists' })
+        return res.status(409).json({
+          message:
+            'This WhatsApp number is already registered and waiting for admin approval'
+        })
       }
       return res.status(409).json({ message: 'User already exists' })
     }
@@ -95,48 +132,22 @@ exports.register = async (req, res) => {
       activePlan: activePlan || null,
       planExpiry: planExpiry || null,
       deviceId: resolvedDeviceId,
-      lastDeviceLogin: resolvedDeviceId ? new Date() : null
+      lastDeviceLogin: resolvedDeviceId ? new Date() : null,
+      registrationStatus: REGISTRATION_STATUS.PENDING,
+      registrationRequestedAt: new Date(),
+      registrationReviewedAt: null,
+      registrationReviewedBy: null,
+      registrationRejectionReason: null
     })
 
-    // 🚫 Block check (admin blocking)
-    if (user.isBlocked) {
-      return res.status(403).json({
-        message: 'Your account has been blocked. Contact admin.',
-        isBlocked: true,
-        isDeviceMismatch: false
-      })
-    }
-
-    // 🔐 Generate JWT
-    const accessToken = generateAccessToken({
-      userId: user._id
-    })
-
-    // 🌐 Build profile pic URL
     const baseUrl = `${req.protocol}://${req.get('host')}`
 
-    // 🎯 Response object
-    const userResponse = {
-      _id: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      whatsapp: user.whatsapp,
-      firebaseToken: user.firebaseToken,
-      isBlocked: user.isBlocked,
-      activePlan: user.activePlan,
-      planExpiry: user.planExpiry,
-      deviceChangeRequested: user.deviceChangeRequested,
-      deviceChangeRequestedAt: user.deviceChangeRequestedAt,
-      profilePic: user.profilePic ? `${baseUrl}/api/users/${user._id}` : null
-    }
-
-    // ✅ Final response
-    res.json({
-      message: 'Registration successful',
+    return res.status(201).json({
+      message: 'Registration submitted for admin approval',
       isRegistered: false,
       isBlocked: false,
-      accessToken,
-      user: userResponse
+      registrationStatus: user.registrationStatus,
+      user: buildUserResponse(user, baseUrl)
     })
   } catch (error) {
     console.error('Registration error:', error)
@@ -189,11 +200,13 @@ exports.registerMobile = async (req, res) => {
     }
 
     let isRegistered = true
-
-    // 🔍 Find user by mobile
     let user = await User.findOne({ mobile })
 
-    // 🆕 If not registered → create
+    if (user && isRegistrationRejected(user)) {
+      await User.deleteOne({ _id: user._id })
+      user = null
+    }
+
     if (!user) {
       isRegistered = false
       user = await User.create({
@@ -207,43 +220,56 @@ exports.registerMobile = async (req, res) => {
         planExpiry: planExpiry || null,
         deviceId: deviceId || null,
         lastDeviceLogin: deviceId ? new Date() : null,
-        lastActivity: new Date() // Set initial activity on registration
+        lastActivity: new Date(),
+        registrationStatus: REGISTRATION_STATUS.PENDING,
+        registrationRequestedAt: new Date(),
+        registrationReviewedAt: null,
+        registrationReviewedBy: null,
+        registrationRejectionReason: null
       })
-    } else {
-      // 🔁 Update only provided fields
-      if (fullName) user.fullName = fullName
-      if (email) user.email = email
-      if (whatsapp) user.whatsapp = whatsapp
-      if (profilePic) user.profilePic = profilePic
-      if (firebaseToken) user.firebaseToken = firebaseToken
-      if (activePlan !== undefined) user.activePlan = activePlan
-      if (planExpiry !== undefined) user.planExpiry = planExpiry
 
-      // 🔒 Device restriction check — DISABLED (uncomment to re-enable single-device)
-      // if (deviceId) {
-      //   if (!user.deviceId) {
-      //     user.deviceId = deviceId
-      //     user.lastDeviceLogin = new Date()
-      //   } else {
-      //     if (user.deviceId !== deviceId) {
-      //       return res.status(403).json({
-      //         message:
-      //           'Login failed. This account is registered to another device. Contact admin to reset device.',
-      //         isBlocked: true,
-      //         isDeviceMismatch: true
-      //       })
-      //     } else {
-      //       user.lastDeviceLogin = new Date()
-      //       user.lastActivity = new Date()
-      //     }
-      //   }
-      // }
-      user.lastActivity = new Date()
-
-      await user.save()
+      const baseUrl = `${req.protocol}://${req.get('host')}`
+      return res.status(403).json({
+        message: 'Your registration is pending admin approval',
+        isRegistered: false,
+        isBlocked: false,
+        registrationStatus: REGISTRATION_STATUS.PENDING,
+        user: buildUserResponse(user, baseUrl)
+      })
     }
 
-    // 🚫 Block check (admin blocking)
+    if (isRegistrationPending(user)) {
+      if (fullName !== undefined) user.fullName = fullName
+      if (email !== undefined) user.email = email
+      if (whatsapp !== undefined) user.whatsapp = whatsapp
+      if (profilePic !== undefined) user.profilePic = profilePic
+      if (firebaseToken !== undefined) user.firebaseToken = firebaseToken
+      if (activePlan !== undefined) user.activePlan = activePlan
+      if (planExpiry !== undefined) user.planExpiry = planExpiry
+      user.lastActivity = new Date()
+      await user.save()
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`
+      return res.status(403).json({
+        message: 'Your registration is pending admin approval',
+        isRegistered: false,
+        isBlocked: false,
+        registrationStatus: REGISTRATION_STATUS.PENDING,
+        user: buildUserResponse(user, baseUrl)
+      })
+    }
+
+    if (fullName !== undefined) user.fullName = fullName
+    if (email !== undefined) user.email = email
+    if (whatsapp !== undefined) user.whatsapp = whatsapp
+    if (profilePic !== undefined) user.profilePic = profilePic
+    if (firebaseToken !== undefined) user.firebaseToken = firebaseToken
+    if (activePlan !== undefined) user.activePlan = activePlan
+    if (planExpiry !== undefined) user.planExpiry = planExpiry
+    user.lastActivity = new Date()
+
+    await user.save()
+
     if (user.isBlocked) {
       return res.status(403).json({
         message: 'Your account has been blocked. Contact admin.',
@@ -252,36 +278,15 @@ exports.registerMobile = async (req, res) => {
       })
     }
 
-    // 🔐 Generate JWT
     const accessToken = generateAccessToken({
       userId: user._id
     })
 
-    // 🔴 Add user to Redis live users - DISABLED
-    // await addLiveUser(user._id);
-
-    // 🌐 Build profile pic URL
     const baseUrl = `${req.protocol}://${req.get('host')}`
+    const userResponse = buildUserResponse(user, baseUrl)
 
-    // 🎯 Response object
-    const userResponse = {
-      _id: user._id,
-      mobile: user.mobile,
-      fullName: user.fullName,
-      email: user.email,
-      whatsapp: user.whatsapp,
-      firebaseToken: user.firebaseToken,
-      isBlocked: user.isBlocked,
-      activePlan: user.activePlan,
-      planExpiry: user.planExpiry,
-      deviceChangeRequested: user.deviceChangeRequested,
-      deviceChangeRequestedAt: user.deviceChangeRequestedAt,
-      profilePic: user.profilePic ? `${baseUrl}/api/users/${user._id}` : null
-    }
-
-    // ✅ Final response
-    res.json({
-      message: isRegistered ? 'Login successful' : 'Registration successful',
+    return res.json({
+      message: isRegistered ? 'Login successful' : 'Registration submitted for admin approval',
       isRegistered,
       isBlocked: false,
       accessToken,
@@ -292,12 +297,6 @@ exports.registerMobile = async (req, res) => {
     res.status(500).json({ message: 'Server error' })
   }
 }
-
-/**
- * SEND WHATSAPP OTP
- * Sends login/registration OTP to a WhatsApp number.
- */
-// exports.sendWhatsAppOtp = async (req, res) => {
 //   try {
 //     const { whatsapp } = req.body;
 
@@ -367,7 +366,12 @@ exports.sendWhatsAppOtp = async (req, res) => {
 
     if (!user) {
       user = await User.create({
-        whatsapp: normalizedWhatsApp
+        whatsapp: normalizedWhatsApp,
+        registrationStatus: REGISTRATION_STATUS.PENDING,
+        registrationRequestedAt: new Date(),
+        registrationReviewedAt: null,
+        registrationReviewedBy: null,
+        registrationRejectionReason: null
       });
     }
 
@@ -506,22 +510,7 @@ exports.verifyWhatsAppOtp = async (req, res) => {
     const baseUrl = `${req.protocol}://${req.get("host")}`;
 
     // 🎯 SAME RESPONSE STRUCTURE AS OLD LOGIN
-    const userResponse = {
-      _id: user._id,
-      mobile: user.mobile,
-      fullName: user.fullName,
-      email: user.email,
-      whatsapp: user.whatsapp,
-      firebaseToken: user.firebaseToken,
-      isBlocked: user.isBlocked,
-      activePlan: user.activePlan,
-      planExpiry: user.planExpiry,
-      deviceChangeRequested: user.deviceChangeRequested,
-      deviceChangeRequestedAt: user.deviceChangeRequestedAt,
-      profilePic: user.profilePic
-        ? `${baseUrl}/api/users/${user._id}`
-        : null
-    };
+    const userResponse = buildUserResponse(user, baseUrl);
 
     res.json({
       message: "Login successful",
@@ -581,6 +570,20 @@ exports.login = async (req, res) => {
     if (!user) {
       console.warn('[auth/login] loginFailReason=no_user')
       return res.status(401).json({ message: 'Invalid credentials' })
+    }
+
+    if (isRegistrationRejected(user)) {
+      return res.status(403).json({
+        message: 'Your registration was rejected. Please register again.',
+        registrationStatus: REGISTRATION_STATUS.REJECTED
+      })
+    }
+
+    if (isRegistrationPending(user)) {
+      return res.status(403).json({
+        message: 'Your registration is pending admin approval',
+        registrationStatus: REGISTRATION_STATUS.PENDING
+      })
     }
 
     // 🔐 Verify password
@@ -904,21 +907,12 @@ exports.completeRegistration = async (req, res) => {
     user.fullName = fullName
     user.email = email.toLowerCase()
     user.password = hashedPassword
+    user.registrationStatus = user.registrationStatus || REGISTRATION_STATUS.PENDING
+    user.registrationRequestedAt = user.registrationRequestedAt || new Date()
     await user.save()
 
     const baseUrl = `${req.protocol}://${req.get('host')}`
-    const userResponse = {
-      _id: user._id,
-      mobile: user.mobile,
-      fullName: user.fullName,
-      email: user.email,
-      whatsapp: user.whatsapp,
-      firebaseToken: user.firebaseToken,
-      isBlocked: user.isBlocked,
-      activePlan: user.activePlan,
-      planExpiry: user.planExpiry,
-      profilePic: user.profilePic ? `${baseUrl}/api/users/${user._id}` : null
-    }
+    const userResponse = buildUserResponse(user, baseUrl)
 
     res.json({
       success: true,
@@ -953,3 +947,8 @@ exports.logout = async (req, res) => {
     res.status(500).json({ message: 'Logout failed' })
   }
 }
+
+
+
+
+

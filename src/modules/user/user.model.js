@@ -20,6 +20,19 @@ const userSchema = new mongoose.Schema(
 
     isBlocked: { type: Boolean, default: false },
 
+    registrationStatus: {
+      type: String,
+      enum: ['PENDING', 'APPROVED', 'REJECTED']
+    },
+    registrationRequestedAt: { type: Date, default: null },
+    registrationReviewedAt: { type: Date, default: null },
+    registrationReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Admin',
+      default: null
+    },
+    registrationRejectionReason: { type: String, default: null },
+
     // Device restriction fields
     deviceId: { type: String, default: null }, // Capacitor device identifier
     lastDeviceLogin: { type: Date }, // Last successful device login timestamp
@@ -52,6 +65,7 @@ userSchema.index(
   { whatsapp: 1 },
   { unique: true, partialFilterExpression: { whatsapp: { $exists: true, $type: 'string' } } }
 );
+userSchema.index({ registrationStatus: 1 });
 
 // Add method to compare password
 userSchema.methods.comparePassword = function (enteredPassword) {

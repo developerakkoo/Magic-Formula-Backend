@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../modules/user/user.model');
 
-module.exports.authMiddleware = async (req, res, next) => {
+const authenticateUser = async (req, res, next, { allowPending = false } = {}) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -22,9 +22,35 @@ module.exports.authMiddleware = async (req, res, next) => {
       return res.status(403).json({ message: 'User account is blocked' });
     }
 
+    const registrationStatus = String(user.registrationStatus || '').toUpperCase()
+    const isRegistrationPending = registrationStatus === 'PENDING'
+    const isRegistrationRejected = registrationStatus === 'REJECTED'
+
+    if (!allowPending && isRegistrationPending) {
+      return res.status(403).json({
+        message: 'Your registration is pending admin approval',
+        registrationStatus: 'PENDING'
+      })
+    }
+
+    if (!allowPending && isRegistrationRejected) {
+      return res.status(403).json({
+        message: 'Your registration was rejected. Please register again.',
+        registrationStatus: 'REJECTED'
+      })
+    }
+
     req.user = user;
     next();
   } catch (error) {
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
-};
+}
+
+module.exports.authMiddleware = async (req, res, next) => {
+  return authenticateUser(req, res, next)
+}
+
+module.exports.authMiddlewareAllowPending = async (req, res, next) => {
+  return authenticateUser(req, res, next, { allowPending: true })
+}

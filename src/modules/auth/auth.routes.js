@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authMiddleware } = require('../../middlewares/auth.middleware');
+const { authMiddleware, authMiddlewareAllowPending } = require('../../middlewares/auth.middleware');
 
 const authController = require('./auth.controller');
 
@@ -12,7 +12,7 @@ router.post('/whatsapp/verify-otp', authController.verifyWhatsAppOtp);
 router.post('/block-device-mismatch', authController.blockUserForDeviceMismatch);
 router.post('/penalty-payment-order', authController.createPenaltyPaymentOrder);
 router.post('/verify-penalty-payment', authController.verifyPenaltyPayment);
-router.post('/complete-registration', authMiddleware, authController.completeRegistration);
+router.post('/complete-registration', authMiddlewareAllowPending, authController.completeRegistration);
 router.post('/logout', authMiddleware, authController.logout);
 
 module.exports = router;
