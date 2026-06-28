@@ -17,7 +17,6 @@ router.get('/reset-password', userController.showForgotPasswordPage);
 router.post('/forgot-password/request-otp', userController.requestPasswordResetOtp);
 // router.post('/forgot-password/resend-otp', userController.requestPasswordResetOtp);
 router.post('/forgot-password/reset', userController.resetPasswordWithOtp);
-router.post('/reset-password', userController.resetPasswordWithOtp);
 /* ======================================================
    PROTECTED USER ROUTES
    ====================================================== */
