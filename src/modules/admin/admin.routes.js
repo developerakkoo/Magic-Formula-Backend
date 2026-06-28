@@ -19,6 +19,8 @@ router.get('/users/:id', adminAuth, adminController.getUserById);
 router.post('/users', adminAuth, adminController.createUser);
 router.patch('/users/:id', adminAuth, adminController.updateUser);
 router.patch('/users/:id/allow-device', adminAuth, adminController.allowNewDevice);
+router.patch('/users/:id/approve', adminAuth, adminController.approveRegistration);
+router.patch('/users/:id/reject', adminAuth, adminController.rejectRegistration);
 router.delete('/users/:id', adminAuth, adminController.deleteUser);
 router.patch('/block/:id', adminAuth, adminController.blockUser);
 router.patch('/unblock/:id', adminAuth, adminController.unblockUser);

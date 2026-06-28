@@ -91,6 +91,8 @@ exports.getCurrentUserProfile = async (req, res) => {
       lastDeviceLogin: user.lastDeviceLogin,
       deviceChangeRequested: user.deviceChangeRequested,
       deviceChangeRequestedAt: user.deviceChangeRequestedAt,
+      registrationStatus: user.registrationStatus,
+      registrationSubmittedAt: user.registrationSubmittedAt,
       profilePic: user.profilePic
         ? `${baseUrl}/api/users/${user._id}`
         : null,

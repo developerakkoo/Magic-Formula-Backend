@@ -76,7 +76,8 @@ const USER_SEARCH_FIELDS = [
   'deviceChangeRequestedAt',
   'passwordSet',
   'registrationStatus',
-  'registrationRequestedAt'
+  'registrationRequestedAt',
+  'registrationRejectionReason'
 ]
 
 const userMatchesSearch = (user, searchTerm) =>
@@ -606,7 +607,8 @@ exports.createUser = async (req, res) => {
       profilePic,
       firebaseToken,
       password: hashedPassword,
-      isBlocked: false
+      isBlocked: false,
+      registrationStatus: 'approved'
     })
 
     const created = await User.findById(user._id).select('-password -__v').lean()
@@ -783,7 +785,12 @@ exports.getAllUsers = async (req, res) => {
     }
 
     // Get all users matching filters (before pagination)
-    let users = await User.find(query).select('-password -__v').lean()
+    let users = await User.find(query).select('-__v').lean()
+    users = users.map(user => {
+      user.passwordSet = Boolean(user.password && String(user.password).length > 0)
+      delete user.password
+      return user
+    })
 
     // Populate planExpiry and filter by subscription status
     const usersWithExpiry = await Promise.all(
@@ -825,11 +832,20 @@ exports.getAllUsers = async (req, res) => {
         )
       } else if (normalizedStatus === 'live') {
         filteredUsers = filteredUsers.filter(user => isUserLive(user))
+      } else if (normalizedStatus === 'pending') {
+        filteredUsers = filteredUsers.filter(
+          user =>
+            user.registrationStatus === 'pending' && user.passwordSet === true
+        )
+      } else if (normalizedStatus === 'rejected') {
+        filteredUsers = filteredUsers.filter(
+          user => user.registrationStatus === 'rejected'
+        )
       } else if (normalizedStatus !== 'all') {
         return res.status(400).json({
           success: false,
           message:
-            "Invalid status filter. Use 'blocked', 'subscribed', 'unsubscribed', 'live', or 'all'."
+            "Invalid status filter. Use 'blocked', 'subscribed', 'unsubscribed', 'live', 'pending', 'rejected', or 'all'."
         })
       }
     }
@@ -2103,7 +2119,7 @@ exports.bulkCreateUsers = async (req, res) => {
           email: formattedEmail,
           whatsapp,
           password: hashedPassword,
-          isVerified: true
+          registrationStatus: 'approved'
         });
 
         // Reset link (for API response only)

@@ -22,7 +22,8 @@ const userSchema = new mongoose.Schema(
 
     registrationStatus: {
       type: String,
-      enum: ['PENDING', 'APPROVED', 'REJECTED']
+      enum: ['PENDING', 'APPROVED', 'REJECTED'],
+      default: 'PENDING'
     },
     registrationRequestedAt: { type: Date, default: null },
     registrationReviewedAt: { type: Date, default: null },
@@ -65,7 +66,7 @@ userSchema.index(
   { whatsapp: 1 },
   { unique: true, partialFilterExpression: { whatsapp: { $exists: true, $type: 'string' } } }
 );
-userSchema.index({ registrationStatus: 1 });
+userSchema.index({ registrationStatus: 1, createdAt: -1 });
 
 // Add method to compare password
 userSchema.methods.comparePassword = function (enteredPassword) {

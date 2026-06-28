@@ -1,6 +1,14 @@
 const User = require('../user/user.model')
 const { generateAccessToken } = require('../../utils/jwt.utils')
 const { normalizeWhatsappDigits } = require('../../utils/whatsappNormalize')
+const {
+  REGISTRATION_STATUS,
+  buildUserAuthResponse,
+  getLoginAuthBlock,
+  canIssueRegistrationToken,
+  clearRejectionMetadata,
+  normalizeRegistrationStatus
+} = require('../../utils/registration.utils')
 const bcrypt = require('bcryptjs')
 const { randomInt } = require('crypto')
 // const { sendWhatsAppMessage } = require('../../services/wati.service')
@@ -13,11 +21,6 @@ const OTP_LENGTH = 6
 const OTP_EXPIRY_MINUTES = 5
 const OTP_RESEND_SECONDS = 30
 const OTP_MAX_ATTEMPTS = 5
-const REGISTRATION_STATUS = {
-  PENDING: 'PENDING',
-  APPROVED: 'APPROVED',
-  REJECTED: 'REJECTED'
-}
 
 const normalizeWhatsAppNumber = value => {
   const digits = String(value || '').replace(/\D/g, '')
@@ -38,31 +41,13 @@ const generateOtpCode = () => {
   return String(randomInt(min, maxExclusive))
 }
 
-const normalizeRegistrationStatus = user =>
-  String(user?.registrationStatus || '').trim().toUpperCase()
-
 const isRegistrationPending = user =>
   normalizeRegistrationStatus(user) === REGISTRATION_STATUS.PENDING
 
 const isRegistrationRejected = user =>
   normalizeRegistrationStatus(user) === REGISTRATION_STATUS.REJECTED
 
-const buildUserResponse = (user, baseUrl) => ({
-  _id: user._id,
-  mobile: user.mobile,
-  fullName: user.fullName,
-  email: user.email,
-  whatsapp: user.whatsapp,
-  firebaseToken: user.firebaseToken,
-  isBlocked: user.isBlocked,
-  activePlan: user.activePlan,
-  planExpiry: user.planExpiry,
-  deviceChangeRequested: user.deviceChangeRequested,
-  deviceChangeRequestedAt: user.deviceChangeRequestedAt,
-  registrationStatus: user.registrationStatus || REGISTRATION_STATUS.APPROVED,
-  registrationRequestedAt: user.registrationRequestedAt || null,
-  profilePic: user.profilePic ? `${baseUrl}/api/users/${user._id}` : null
-})
+const buildUserResponse = (user, baseUrl) => buildUserAuthResponse(user, baseUrl)
 
 /**
  * REGISTER WITH EMAIL AND PASSWORD
@@ -103,19 +88,34 @@ exports.register = async (req, res) => {
     }
 
     if (existingUser) {
-      if (existingUser.email === email.toLowerCase()) {
-        return res.status(409).json({
-          message:
-            'This email is already registered and waiting for admin approval'
+      if (normalizeRegistrationStatus(existingUser) === REGISTRATION_STATUS.APPROVED) {
+        if (existingUser.email === email.toLowerCase()) {
+          return res
+            .status(409)
+            .json({ message: 'User with this email already exists' })
+        }
+        if (existingUser.whatsapp === whatsapp) {
+          return res
+            .status(409)
+            .json({ message: 'User with this WhatsApp number already exists' })
+        }
+        return res.status(409).json({ message: 'User already exists' })
+      }
+
+      if (existingUser.isBlocked) {
+        return res.status(403).json({
+          message: 'Your account has been blocked. Contact admin.',
+          isBlocked: true,
+          isDeviceMismatch: false
         })
       }
-      if (existingUser.whatsapp === whatsapp) {
-        return res.status(409).json({
-          message:
-            'This WhatsApp number is already registered and waiting for admin approval'
-        })
-      }
-      return res.status(409).json({ message: 'User already exists' })
+
+      return res.status(409).json({
+        message:
+          existingUser.email === email.toLowerCase()
+            ? 'This email is already registered and waiting for admin approval'
+            : 'This WhatsApp number is already registered and waiting for admin approval'
+      })
     }
 
     // Hash password
@@ -146,6 +146,7 @@ exports.register = async (req, res) => {
       message: 'Registration submitted for admin approval',
       isRegistered: false,
       isBlocked: false,
+      isPendingApproval: true,
       registrationStatus: user.registrationStatus,
       user: buildUserResponse(user, baseUrl)
     })
@@ -493,30 +494,31 @@ exports.verifyWhatsAppOtp = async (req, res) => {
 
     await user.save();
 
-    // 🚫 Block check
-    if (user.isBlocked) {
-      return res.status(403).json({
-        message: "Your account has been blocked. Contact admin.",
-        isBlocked: true,
-        isDeviceMismatch: false
+    const tokenCheck = canIssueRegistrationToken(user);
+    if (!tokenCheck.allowed) {
+      return res.status(tokenCheck.status).json(tokenCheck.body);
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    if (tokenCheck.mode === 'login') {
+      const accessToken = generateAccessToken({ userId: user._id });
+      return res.json({
+        message: 'Login successful',
+        isBlocked: false,
+        accessToken,
+        user: buildUserAuthResponse(user, baseUrl)
       });
     }
 
-    // 🔐 Generate JWT
-    const accessToken = generateAccessToken({
-      userId: user._id
-    });
-
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
-
-    // 🎯 SAME RESPONSE STRUCTURE AS OLD LOGIN
-    const userResponse = buildUserResponse(user, baseUrl);
-
-    res.json({
-      message: "Login successful",
+    // Registration / re-application — limited token for complete-registration only
+    const accessToken = generateAccessToken({ userId: user._id });
+    return res.json({
+      message: 'OTP verified',
       isBlocked: false,
+      isRegistrationToken: true,
       accessToken,
-      user: userResponse
+      user: buildUserAuthResponse(user, baseUrl)
     });
 
   } catch (error) {
@@ -574,14 +576,16 @@ exports.login = async (req, res) => {
 
     if (isRegistrationRejected(user)) {
       return res.status(403).json({
-        message: 'Your registration was rejected. Please register again.',
+        message: 'Your registration was not approved. Check your email for details.',
+        isRejected: true,
         registrationStatus: REGISTRATION_STATUS.REJECTED
       })
     }
 
     if (isRegistrationPending(user)) {
       return res.status(403).json({
-        message: 'Your registration is pending admin approval',
+        message: 'Your account is not approved yet. Please wait for admin approval.',
+        isPendingApproval: true,
         registrationStatus: REGISTRATION_STATUS.PENDING
       })
     }
@@ -630,13 +634,9 @@ exports.login = async (req, res) => {
     user.lastActivity = new Date()
     await user.save()
 
-    // 🚫 Block check (admin blocking)
-    if (user.isBlocked) {
-      return res.status(403).json({
-        message: 'Your account has been blocked. Contact admin.',
-        isBlocked: true,
-        isDeviceMismatch: false
-      })
+    const authBlock = getLoginAuthBlock(user)
+    if (authBlock.blocked) {
+      return res.status(authBlock.status).json(authBlock.body)
     }
 
     // 🔐 Generate JWT
@@ -647,28 +647,12 @@ exports.login = async (req, res) => {
     // 🌐 Build profile pic URL
     const baseUrl = `${req.protocol}://${req.get('host')}`
 
-    // 🎯 Response object
-    const userResponse = {
-      _id: user._id,
-      mobile: user.mobile,
-      fullName: user.fullName,
-      email: user.email,
-      whatsapp: user.whatsapp,
-      firebaseToken: user.firebaseToken,
-      isBlocked: user.isBlocked,
-      activePlan: user.activePlan,
-      planExpiry: user.planExpiry,
-      deviceChangeRequested: user.deviceChangeRequested,
-      deviceChangeRequestedAt: user.deviceChangeRequestedAt,
-      profilePic: user.profilePic ? `${baseUrl}/api/users/${user._id}` : null
-    }
-
     // ✅ Final response
     res.json({
       message: 'Login successful',
       isBlocked: false,
       accessToken,
-      user: userResponse
+      user: buildUserAuthResponse(user, baseUrl)
     })
   } catch (error) {
     console.error('Login error:', error)
@@ -885,7 +869,7 @@ exports.completeRegistration = async (req, res) => {
       })
     }
 
-    if (user.password) {
+    if (user.password && user.registrationStatus !== REGISTRATION_STATUS.REJECTED) {
       return res.status(400).json({
         success: false,
         message: 'Registration already completed for this account'
@@ -907,16 +891,20 @@ exports.completeRegistration = async (req, res) => {
     user.fullName = fullName
     user.email = email.toLowerCase()
     user.password = hashedPassword
-    user.registrationStatus = user.registrationStatus || REGISTRATION_STATUS.PENDING
+    user.registrationStatus = REGISTRATION_STATUS.PENDING
     user.registrationRequestedAt = user.registrationRequestedAt || new Date()
+    clearRejectionMetadata(user)
     await user.save()
 
     const baseUrl = `${req.protocol}://${req.get('host')}`
-    const userResponse = buildUserResponse(user, baseUrl)
+    const userResponse = buildUserAuthResponse(user, baseUrl)
 
     res.json({
       success: true,
-      message: 'Registration completed successfully',
+      message:
+        'Registration submitted. Your account is awaiting admin approval.',
+      isPendingApproval: true,
+      registrationStatus: REGISTRATION_STATUS.PENDING,
       data: userResponse
     })
   } catch (error) {
