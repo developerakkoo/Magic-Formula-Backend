@@ -94,13 +94,18 @@ const REGISTRATION_STATUS = {
 }
 
 const normalizeRegistrationStatus = user =>
-  String(user?.registrationStatus || '').trim().toUpperCase()
+  String(user?.registrationStatus || REGISTRATION_STATUS.APPROVED)
+    .trim()
+    .toUpperCase()
+
+const toAdminRegistrationStatus = user =>
+  normalizeRegistrationStatus(user).toLowerCase()
 
 const buildAdminUserResponse = user => {
   if (!user) return user
   return {
     ...user,
-    registrationStatus: user.registrationStatus || REGISTRATION_STATUS.APPROVED
+    registrationStatus: toAdminRegistrationStatus(user)
   }
 }
 
@@ -519,11 +524,11 @@ exports.getUserById = async (req, res) => {
 
     res.json({
       success: true,
-      data: {
+      data: buildAdminUserResponse({
         ...userObj,
         planExpiry,
         passwordSet
-      }
+      })
     })
   } catch (error) {
     res.status(500).json({ message: 'Server error' })
@@ -608,7 +613,7 @@ exports.createUser = async (req, res) => {
       firebaseToken,
       password: hashedPassword,
       isBlocked: false,
-      registrationStatus: 'approved'
+      registrationStatus: REGISTRATION_STATUS.APPROVED
     })
 
     const created = await User.findById(user._id).select('-password -__v').lean()
@@ -835,11 +840,13 @@ exports.getAllUsers = async (req, res) => {
       } else if (normalizedStatus === 'pending') {
         filteredUsers = filteredUsers.filter(
           user =>
-            user.registrationStatus === 'pending' && user.passwordSet === true
+            normalizeRegistrationStatus(user) === REGISTRATION_STATUS.PENDING &&
+            user.passwordSet === true
         )
       } else if (normalizedStatus === 'rejected') {
         filteredUsers = filteredUsers.filter(
-          user => user.registrationStatus === 'rejected'
+          user =>
+            normalizeRegistrationStatus(user) === REGISTRATION_STATUS.REJECTED
         )
       } else if (normalizedStatus !== 'all') {
         return res.status(400).json({
@@ -912,7 +919,7 @@ exports.getAllUsers = async (req, res) => {
       page: pageNum,
       totalPages,
       limit: limitNum,
-      users: usersToReturn
+      users: usersToReturn.map(buildAdminUserResponse)
     })
   } catch (error) {
     console.error('Get all users error:', error)
@@ -2119,7 +2126,7 @@ exports.bulkCreateUsers = async (req, res) => {
           email: formattedEmail,
           whatsapp,
           password: hashedPassword,
-          registrationStatus: 'approved'
+          registrationStatus: REGISTRATION_STATUS.APPROVED
         });
 
         // Reset link (for API response only)
